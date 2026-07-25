@@ -42,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="bg-black min-h-screen flex items-center justify-center overflow-hidden">
+      <body className="bg-black min-h-screen overflow-hidden">
         {children}
       </body>
     </html>
