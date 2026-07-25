@@ -38,38 +38,7 @@ export function PhoneFrame() {
   };
 
   return (
-    <div className="phone-frame">
-      {/* Dynamic Island */}
-      <div className="island">
-        <div className="island-dot" />
-        <div className="island-lens" />
-      </div>
-
-      {/* Status Bar */}
-      <div className="statusbar">
-        <span className="st-time">{time}</span>
-        <div className="flex items-center gap-[5px]">
-          <span className="text-[12px] font-semibold text-white">5G</span>
-          {/* Signal bars */}
-          <div className="flex items-end gap-[2px]">
-            {[4, 7, 10, 13].map((h, i) => (
-              <div
-                key={i}
-                className="w-[3px] rounded-[1px] bg-white"
-                style={{ height: `${h}px`, opacity: i < 2 ? 0.4 + i * 0.15 : 0.75 + i * 0.1 }}
-              />
-            ))}
-          </div>
-          {/* Battery */}
-          <div className="flex items-center gap-[1px]">
-            <div className="w-[23px] h-[11px] border-[1.5px] border-white/60 rounded-[3px] p-[1.5px] flex items-center">
-              <div className="h-full w-[76%] bg-white rounded-[1px]" />
-            </div>
-            <div className="w-[2px] h-[5px] bg-white/55 rounded-[0_1px_1px_0]" />
-          </div>
-        </div>
-      </div>
-
+    <div className="app-container">
       {/* Screen content */}
       <div className="flex-1 overflow-hidden relative">
         <div id="main-scroller" className="h-full overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: 'none' }}>
@@ -96,7 +65,7 @@ export function PhoneFrame() {
       </div>
 
       {/* Tab Bar */}
-      <div className="tabbar">
+      <div className="tabbar pb-[env(safe-area-inset-bottom)]">
         {TABS.map(({ id, label }) => {
           const isActive = activeTab === id;
           const strokeColor = isActive ? 'rgba(59,126,248,1)' : 'rgba(255,255,255,0.3)';
@@ -123,11 +92,6 @@ export function PhoneFrame() {
             </button>
           );
         })}
-      </div>
-
-      {/* Home indicator */}
-      <div className="flex justify-center py-[6px] pb-[10px]">
-        <div className="w-[130px] h-[4px] bg-white/28 rounded-full" />
       </div>
     </div>
   );
