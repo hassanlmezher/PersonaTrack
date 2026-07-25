@@ -55,6 +55,29 @@ function hashStr(s: string): number {
   return Math.abs(h);
 }
 
+// Generates username permutations based on a full name string
+function generatePermutations(fullName: string): string[] {
+  const clean = fullName.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '');
+  const parts = clean.split(' ').filter(Boolean);
+  if (parts.length === 0) return [];
+  if (parts.length === 1) return [parts[0], `${parts[0]}_official`, `real${parts[0]}`];
+
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  const f = first.charAt(0);
+  const l = last.charAt(0);
+
+  return Array.from(new Set([
+    `${first}${last}`,
+    `${first}.${last}`,
+    `${first}_${last}`,
+    `${f}${last}`,
+    `${first}${l}`,
+    `${first}${last.substring(0, 2)}`,
+    `${first}official`
+  ]));
+}
+
 // ─── Default settings ─────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -77,8 +100,8 @@ export const useStore = create<AppStore>()(
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       // ── Recon inputs ────────────────────────────────────────────────────────
-      scanMode: 'username',
-      setScanMode: (mode) => set({ scanMode: mode }),
+      scanMode: 'name',
+      setScanMode: (mode) => set({ scanMode: mode, targets: [] }),
 
       targets: [],
       addTarget: (t) => {
@@ -104,7 +127,7 @@ export const useStore = create<AppStore>()(
 
       startScan: () => {
         const { targets, scanMode, settings, uploadedExifData, uploadedPHash, uploadedFileUrl } = get();
-        if (!targets.length && scanMode === 'username') return;
+        if (!targets.length && scanMode !== 'facial') return;
         if (scanMode === 'facial' && !uploadedFileUrl) return;
 
         set({ scanState: { status: 'scanning', currentStage: 0, stages: SCAN_STAGES } });
@@ -136,6 +159,16 @@ export const useStore = create<AppStore>()(
             }));
           }
         }, 900);
+      },
+
+      pivotScan: (identifier: string, mode: ScanMode) => {
+        set({
+          scanMode: mode,
+          targets: [identifier],
+          activeTab: 'recon',
+        });
+        // small delay to let UI shift back to recon tab before scanning
+        setTimeout(() => get().startScan(), 50);
       },
 
       // ── Dossiers ─────────────────────────────────────────────────────────────
@@ -179,27 +212,29 @@ async function buildDossier(
   const seed = hashStr(primaryTarget);
   const id = `${Date.now()}-${seed}`;
 
-  // ── Real API lookups (username mode only) ──────────────────────────────────
+  // ── Real API lookups (name mode only) ──────────────────────────────────
   let realPlatforms: PlatformResult[] = [];
-  if (mode === 'username') {
+  const searchTargets = mode === 'name' ? generatePermutations(primaryTarget) : targets;
+  
+  if (mode === 'name') {
     try {
       const res = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targets, mode }),
+        body: JSON.stringify({ targets: searchTargets, mode: 'username' }), // Backend still uses username internally
       });
       if (res.ok) {
         const data = await res.json();
         realPlatforms = data.platforms ?? [];
       }
     } catch {
-      // Network issue — all results will be empty (not faked)
+      // Network issue
     }
   }
 
   // ── Quick check links (platforms we can't verify server-side) ──────────────
-  const cleanName = primaryTarget.replace(/^@/, '');
-  const quickLinks: QuickLink[] = mode === 'username'
+  const cleanName = searchTargets[0] ? searchTargets[0].replace(/^@/, '') : primaryTarget.replace(/^@/, '');
+  const quickLinks: QuickLink[] = mode === 'name'
     ? QUICK_CHECK_PLATFORMS.map((p) => ({
         platform: p.platform,
         icon: p.icon,
@@ -242,13 +277,19 @@ async function buildDossier(
   ];
 
   // ── Aliases ───────────────────────────────────────────────────────────────
-  const aliases = mode === 'username' ? [
-    cleanName + '_',
-    cleanName + '99',
-    '_' + cleanName,
-    cleanName.replace(/[._]/g, ''),
-    cleanName + '_official',
-  ] : [];
+  const aliases = mode === 'name' ? searchTargets : [];
+
+  // ── Email Nodes (Email Mode Simulation) ───────────────────────────────────
+  let emailNodes: string[] = [];
+  if (mode === 'email') {
+    emailNodes = [
+      primaryTarget,
+      primaryTarget.split('@')[0] + '@gmail.com',
+      primaryTarget.split('@')[0] + '@proton.me'
+    ];
+  } else if (mode === 'name') {
+    emailNodes = [`${cleanName}@proton.me`, `${cleanName}@gmail.com`];
+  }
 
   // ── Risk score (based only on confirmed data) ─────────────────────────────
   const verifiedCount = realPlatforms.filter((p) => p.status === 'verified').length;
@@ -271,14 +312,14 @@ async function buildDossier(
     riskScore,
     riskLabel: riskLabel as Dossier['riskLabel'],
     displayName: mode === 'facial' ? 'Uploaded Image Subject' : primaryTarget,
-    email: mode === 'username' ? `${cleanName}@proton.me` : undefined,
+    email: mode === 'name' || mode === 'email' ? primaryTarget : undefined,
     platforms: realPlatforms,         // ONLY real API-confirmed results
     quickLinks,                        // Manual-check links (no false confidence)
     facialMatches,
     exif: exifData || undefined,
     breaches: fetchBreaches ? allBreaches : [],
     aliases,
-    emailNodes: mode === 'username' ? [`${cleanName}@proton.me`, `${cleanName}@gmail.com`] : [],
+    emailNodes,
     sourceCount: realPlatforms.filter(p => p.status === 'verified').length,
     imageUrl: imageUrl || undefined,
     pHash: pHash || undefined,

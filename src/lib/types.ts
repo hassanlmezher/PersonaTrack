@@ -1,10 +1,10 @@
 // ─── Scan Targets ────────────────────────────────────────────────────────────
 
-export type ScanMode = 'username' | 'facial';
+export type ScanMode = 'name' | 'facial' | 'email';
 
 export interface Target {
   id: string;
-  value: string; // @username or file URL
+  value: string; // Name, email, or file URL
   mode: ScanMode;
 }
 
@@ -163,6 +163,7 @@ export interface AppStore {
   // Scan
   scanState: ScanState;
   startScan: () => void;
+  pivotScan: (identifier: string, mode: ScanMode) => void;
 
   // Dossiers
   dossiers: Dossier[];

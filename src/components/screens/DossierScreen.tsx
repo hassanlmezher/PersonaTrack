@@ -129,7 +129,7 @@ function DynamicGraph({ dossier }: { dossier: Dossier }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export function DossierScreen() {
-  const { getActiveDossier, dossiers, setActiveDossierId } = useStore();
+  const { getActiveDossier, dossiers, setActiveDossierId, pivotScan } = useStore();
   const dossier = getActiveDossier();
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -138,10 +138,11 @@ export function DossierScreen() {
     facial: false,
     exif: false,
     graph: false,
+    emails: true,
   });
 
   useEffect(() => {
-    setOpenSections({ confirmed: true, quicklinks: true, facial: false, exif: false, graph: false });
+    setOpenSections({ confirmed: true, quicklinks: true, facial: false, exif: false, graph: false, emails: true });
   }, [dossier?.id]);
 
   const toggle = (key: string) => setOpenSections(p => ({ ...p, [key]: !p[key] }));
@@ -240,6 +241,45 @@ export function DossierScreen() {
           </div>
         ))}
       </div>
+
+      {/* ── EMAIL NODES ── */}
+      {dossier.emailNodes.length > 0 && (
+        <Accordion
+          id="emails"
+          open={openSections.emails ?? false}
+          onToggle={() => toggle('emails')}
+          icon={
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-t2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+              <polyline points="22,6 12,13 2,6" />
+            </svg>
+          }
+          title="Discovered Email Addresses"
+          sub={`${dossier.emailNodes.length} associated accounts`}
+        >
+          <div className="space-y-2">
+            {dossier.emailNodes.map(email => (
+              <div key={email} className="bg-surface2 border border-border rounded-xl p-[10px] flex items-center justify-between">
+                <div className="flex items-center gap-[10px]">
+                  <div className="w-[30px] h-[30px] bg-surface3 rounded-lg flex items-center justify-center text-t2 flex-shrink-0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium text-t1 font-mono">{email}</p>
+                    <p className="text-[10px] text-t3 mt-[2px]">Primary Contact Node</p>
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); pivotScan(email, 'email'); }}
+                  className="bg-accent/10 border border-accent/20 text-accent text-[10px] font-semibold px-3 py-1.5 rounded-lg hover:bg-accent/20 active:scale-95 transition-all"
+                >
+                  Pivot Scan
+                </button>
+              </div>
+            ))}
+          </div>
+        </Accordion>
+      )}
 
       {/* ── CONFIRMED PLATFORMS (real API) ── */}
       <Accordion
@@ -403,6 +443,7 @@ export function DossierScreen() {
 // ─── Platform Card (confirmed API results only) ───────────────────────────────
 
 function PlatformCard({ platform: p }: { platform: PlatformResult }) {
+  const { pivotScan } = useStore();
   const isFound = p.status === 'verified';
   return (
     <div className={`bg-surface2 border rounded-xl p-[10px] transition-opacity ${isFound ? 'border-border' : 'border-border opacity-40'}`}>
@@ -429,11 +470,21 @@ function PlatformCard({ platform: p }: { platform: PlatformResult }) {
           {isFound ? 'Confirmed' : 'Not Found'}
         </span>
       </div>
-      {isFound && p.profileUrl && (
-        <a href={p.profileUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-          className="mt-[8px] flex items-center justify-center gap-[6px] w-full py-[7px] rounded-[9px] bg-green/10 border border-green/25 text-[11px] font-semibold text-green hover:bg-green/15 active:scale-[0.98] transition-all">
-          <ExternalLinkIcon />Open Profile
-        </a>
+      {isFound && (
+        <div className="mt-[8px] flex gap-2">
+          {p.profileUrl && (
+            <a href={p.profileUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+              className="flex-1 flex items-center justify-center gap-[6px] py-[7px] rounded-[9px] bg-green/10 border border-green/25 text-[11px] font-semibold text-green hover:bg-green/15 active:scale-[0.98] transition-all">
+              <ExternalLinkIcon />Open Profile
+            </a>
+          )}
+          <button 
+            onClick={(e) => { e.stopPropagation(); pivotScan(p.handle, 'name'); }}
+            className="flex-1 flex items-center justify-center gap-[6px] py-[7px] rounded-[9px] bg-accent/10 border border-accent/25 text-[11px] font-semibold text-accent hover:bg-accent/15 active:scale-[0.98] transition-all"
+          >
+            Pivot Scan
+          </button>
+        </div>
       )}
     </div>
   );

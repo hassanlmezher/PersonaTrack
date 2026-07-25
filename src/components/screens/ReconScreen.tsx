@@ -125,7 +125,7 @@ export function ReconScreen() {
   const isScanning = scanState.status === 'scanning';
   const currentStage = scanState.stages[scanState.currentStage] ?? scanState.stages[scanState.stages.length - 1];
   const logLines = scanState.stages.slice(0, scanState.currentStage + 1).map((s) => s.log);
-  const canScan = scanMode === 'username' ? targets.length > 0 : !!uploadedFileUrl;
+  const canScan = (scanMode === 'name' || scanMode === 'email') ? targets.length > 0 : !!uploadedFileUrl;
 
   return (
     <div className="px-[18px] pt-4 pb-28 space-y-3">
@@ -141,35 +141,43 @@ export function ReconScreen() {
       </div>
 
       {/* Segmented control */}
-      <div className="bg-surface3 rounded-[10px] p-[3px] flex">
+      <div className="bg-surface3 rounded-[10px] p-[3px] flex gap-1 overflow-x-auto" id="main-scroller">
         <button
-          onClick={() => setScanMode('username')}
-          className={`flex-1 py-[7px] text-[13px] font-medium rounded-[8px] transition-all duration-200 cursor-pointer ${
-            scanMode === 'username' ? 'bg-surface1 text-t1 shadow-sm' : 'text-t3'
+          onClick={() => setScanMode('name')}
+          className={`flex-1 min-w-[100px] py-[7px] text-[12px] font-medium rounded-[8px] transition-all duration-200 cursor-pointer ${
+            scanMode === 'name' ? 'bg-surface1 text-t1 shadow-sm' : 'text-t3 hover:text-t2 hover:bg-surface2'
           }`}
         >
-          Username Matrix
+          Name/Alias
         </button>
         <button
           onClick={() => setScanMode('facial')}
-          className={`flex-1 py-[7px] text-[13px] font-medium rounded-[8px] transition-all duration-200 cursor-pointer ${
-            scanMode === 'facial' ? 'bg-surface1 text-t1 shadow-sm' : 'text-t3'
+          className={`flex-1 min-w-[100px] py-[7px] text-[12px] font-medium rounded-[8px] transition-all duration-200 cursor-pointer ${
+            scanMode === 'facial' ? 'bg-surface1 text-t1 shadow-sm' : 'text-t3 hover:text-t2 hover:bg-surface2'
           }`}
         >
-          Facial Index
+          Facial Image
+        </button>
+        <button
+          onClick={() => setScanMode('email')}
+          className={`flex-1 min-w-[100px] py-[7px] text-[12px] font-medium rounded-[8px] transition-all duration-200 cursor-pointer ${
+            scanMode === 'email' ? 'bg-surface1 text-t1 shadow-sm' : 'text-t3 hover:text-t2 hover:bg-surface2'
+          }`}
+        >
+          Email Pivot
         </button>
       </div>
 
-      {/* ── USERNAME PANEL ── */}
-      {scanMode === 'username' && (
+      {/* ── NAME PANEL ── */}
+      {scanMode === 'name' && (
         <>
           <div className="card p-[14px]">
-            <p className="sec-label mb-2">Target Identifiers</p>
+            <p className="sec-label mb-2">Target Full Name / Alias</p>
             <div className="flex gap-2 mb-[10px]">
               <input
                 className="inp flex-1 px-3 py-[10px]"
                 type="text"
-                placeholder="@username or alias"
+                placeholder="e.g. Hassan Mezher"
                 value={inputVal}
                 onChange={(e) => setInputVal(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -189,7 +197,7 @@ export function ReconScreen() {
                 </div>
               ))}
               {targets.length === 0 && (
-                <span className="text-[11px] text-t4">Add at least one target username</span>
+                <span className="text-[11px] text-t4">Add at least one target name</span>
               )}
             </div>
           </div>
@@ -280,6 +288,65 @@ export function ReconScreen() {
                 <span key={s} className="badge badge-muted">{s}</span>
               ))}
             </div>
+          </div>
+        </>
+      )}
+
+      {/* ── EMAIL PANEL ── */}
+      {scanMode === 'email' && (
+        <>
+          <div className="card p-[14px]">
+            <p className="sec-label mb-2">Target Email Address</p>
+            <div className="flex gap-2 mb-[10px]">
+              <input
+                className="inp flex-1 px-3 py-[10px]"
+                type="email"
+                placeholder="target@domain.com"
+                value={inputVal}
+                onChange={(e) => setInputVal(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+              <button
+                onClick={handleAddTarget}
+                className="w-[42px] bg-surface3 border border-border rounded-[10px] text-t2 text-xl flex items-center justify-center flex-shrink-0 hover:bg-surface2 transition-colors cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-[6px] min-h-[22px]">
+              {targets.map((t) => (
+                <div key={t} className="chip">
+                  {t}{' '}
+                  <span className="chip-x" onClick={() => removeTarget(t)}>×</span>
+                </div>
+              ))}
+              {targets.length === 0 && (
+                <span className="text-[11px] text-t4">Add an email address to pivot</span>
+              )}
+            </div>
+          </div>
+
+          <div className="card px-[14px] py-0">
+            <p className="sec-label pt-3 pb-2">Pivot Configuration</p>
+            {(
+              [
+                { key: 'breachLookup', label: 'Breach Database Lookup', sub: 'Cross-reference HIBP records' },
+                { key: 'aliasEngine', label: 'Reverse Handle Discovery', sub: 'Find usernames linked to email' },
+              ] as const
+            ).map(({ key, label, sub }) => (
+              <div key={key} className="row">
+                <div>
+                  <p className="text-[13px] font-medium text-t1">{label}</p>
+                  <p className="text-[11px] text-t3 mt-[1px]">{sub}</p>
+                </div>
+                <div
+                  className={`toggle ${settings[key] ? 'on' : ''}`}
+                  onClick={() => toggleSetting(key)}
+                >
+                  <div className="knob" />
+                </div>
+              </div>
+            ))}
           </div>
         </>
       )}
