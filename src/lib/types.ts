@@ -97,6 +97,9 @@ export interface Dossier {
   aliases: string[];
   emailNodes: string[];
   sourceCount: number;
+  // Image pipeline
+  imageUrl?: string;    // object URL of the uploaded image (for facial mode)
+  pHash?: string;       // perceptual hash of the uploaded image
 }
 
 // ─── Scan State ───────────────────────────────────────────────────────────────
@@ -144,7 +147,8 @@ export interface AppStore {
   uploadedFile: File | null;
   uploadedFileUrl: string | null;
   uploadedExifData: ExifData | null;
-  setUploadedFile: (file: File | null, exif?: ExifData | null) => void;
+  uploadedPHash: string | null;
+  setUploadedFile: (file: File | null, exif?: ExifData | null, pHash?: string | null) => void;
 
   // Scan
   scanState: ScanState;

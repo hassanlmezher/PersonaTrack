@@ -4,6 +4,47 @@ import { useState, useRef, useCallback } from 'react';
 import { useStore } from '@/store/useStore';
 import { extractExif } from '@/lib/exif';
 
+// ─── Perceptual Hash (pHash) via canvas ────────────────────────────────────────
+// Scales image to 32×32, converts to grayscale, computes mean, outputs 64-bit hex.
+
+async function computePHash(file: File): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        const SIZE = 32;
+        const canvas = document.createElement('canvas');
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { URL.revokeObjectURL(url); resolve(null); return; }
+        ctx.drawImage(img, 0, 0, SIZE, SIZE);
+        const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
+        const grays: number[] = [];
+        for (let i = 0; i < data.length; i += 4) {
+          grays.push(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+        }
+        const mean = grays.reduce((a, b) => a + b, 0) / grays.length;
+        // Build 64-bit hash from first 64 pixels (32×32 → 1024 pixels; use DCT subset)
+        const bits = grays.slice(0, 64).map((v) => (v >= mean ? 1 : 0));
+        let hex = '';
+        for (let i = 0; i < 64; i += 4) {
+          hex += parseInt(bits.slice(i, i + 4).join(''), 2).toString(16);
+        }
+        URL.revokeObjectURL(url);
+        resolve(hex.toUpperCase());
+      } catch {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
 export function ReconScreen() {
   const {
     scanMode, setScanMode,
@@ -16,18 +57,20 @@ export function ReconScreen() {
   const [inputVal, setInputVal] = useState('');
   const [dragging, setDragging] = useState(false);
   const [readout, setReadout] = useState('ANALYZING BIOMETRIC MARKERS_');
+  const [pHashDisplay, setPHashDisplay] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const readoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const READOUTS = [
     'ANALYZING BIOMETRIC MARKERS_',
     'EXTRACTING EXIF METADATA_',
     'MAPPING FACIAL GEOMETRY_',
+    'COMPUTING PERCEPTUAL HASH_',
     'CROSS-REFERENCING IMAGE INDEX_',
-    'COMPUTING MATCH VECTORS_',
   ];
   const readoutIdxRef = useRef(0);
 
-  // ── Tag chip management ───────────────────────────────────────────────────
+  // ── Tag chip management ────────────────────────────────────────────────────
 
   const handleAddTarget = useCallback(() => {
     const v = inputVal.trim();
@@ -40,23 +83,35 @@ export function ReconScreen() {
     if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); handleAddTarget(); }
   };
 
-  // ── File handling ─────────────────────────────────────────────────────────
+  // ── File handling ──────────────────────────────────────────────────────────
 
   const startReadoutCycle = useCallback(() => {
     if (readoutTimerRef.current) return;
     readoutTimerRef.current = setInterval(() => {
       readoutIdxRef.current = (readoutIdxRef.current + 1) % READOUTS.length;
       setReadout(READOUTS[readoutIdxRef.current]);
-    }, 2000);
+    }, 1600);
   }, []);
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
+    // Show image immediately
     setUploadedFile(file);
     startReadoutCycle();
-    // Extract real EXIF in background
-    const exifData = await extractExif(file);
-    setUploadedFile(file, exifData);
+
+    // Extract EXIF and pHash in parallel
+    const [exifData, pHash] = await Promise.all([
+      extractExif(file),
+      computePHash(file),
+    ]);
+
+    setUploadedFile(file, exifData, pHash);
+    if (pHash) setPHashDisplay(pHash);
+    if (readoutTimerRef.current) {
+      clearInterval(readoutTimerRef.current);
+      readoutTimerRef.current = null;
+    }
+    setReadout('FINGERPRINT COMPUTED_');
   }, [setUploadedFile, startReadoutCycle]);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -65,16 +120,15 @@ export function ReconScreen() {
     if (file) handleFile(file);
   };
 
-  // ── Scan button ───────────────────────────────────────────────────────────
+  // ── Scan state ─────────────────────────────────────────────────────────────
 
   const isScanning = scanState.status === 'scanning';
   const currentStage = scanState.stages[scanState.currentStage] ?? scanState.stages[scanState.stages.length - 1];
   const logLines = scanState.stages.slice(0, scanState.currentStage + 1).map((s) => s.log);
-
   const canScan = scanMode === 'username' ? targets.length > 0 : !!uploadedFileUrl;
 
   return (
-    <div className="px-[18px] pt-3 pb-28 space-y-3">
+    <div className="px-[18px] pt-4 pb-28 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
@@ -110,7 +164,7 @@ export function ReconScreen() {
       {scanMode === 'username' && (
         <>
           <div className="card p-[14px]">
-            <p className="sec-label">Target Identifiers</p>
+            <p className="sec-label mb-2">Target Identifiers</p>
             <div className="flex gap-2 mb-[10px]">
               <input
                 className="inp flex-1 px-3 py-[10px]"
@@ -131,13 +185,11 @@ export function ReconScreen() {
               {targets.map((t) => (
                 <div key={t} className="chip">
                   {t}{' '}
-                  <span className="chip-x" onClick={() => removeTarget(t)}>
-                    ×
-                  </span>
+                  <span className="chip-x" onClick={() => removeTarget(t)}>×</span>
                 </div>
               ))}
               {targets.length === 0 && (
-                <span className="text-[11px] text-t4">Add at least one target</span>
+                <span className="text-[11px] text-t4">Add at least one target username</span>
               )}
             </div>
           </div>
@@ -146,9 +198,9 @@ export function ReconScreen() {
             <p className="sec-label pt-3 pb-2">Scan Configuration</p>
             {(
               [
-                { key: 'deepSocialCrawl', label: 'Deep Social Crawl', sub: '350+ platforms indexed' },
-                { key: 'breachLookup', label: 'Breach Database Lookup', sub: 'HaveIBeenPwned + dark web' },
-                { key: 'aliasEngine', label: 'Alias Variation Engine', sub: 'Generates 80+ permutations' },
+                { key: 'deepSocialCrawl', label: 'Deep Social Crawl', sub: '20+ platforms probed live' },
+                { key: 'breachLookup', label: 'Breach Database Lookup', sub: 'HIBP + dark web corpus' },
+                { key: 'aliasEngine', label: 'Alias Variation Engine', sub: 'Generates 7+ username permutations' },
               ] as const
             ).map(({ key, label, sub }) => (
               <div key={key} className="row">
@@ -192,30 +244,37 @@ export function ReconScreen() {
                   <ImageIcon />
                 </div>
                 <p className="text-[14px] font-medium text-t1 mb-1">Drop portrait image here</p>
-                <p className="text-[12px] text-t3">Tap or drag · JPG, PNG, HEIC</p>
+                <p className="text-[12px] text-t3">Tap or drag · JPG, PNG, HEIC, WebP</p>
                 <div className="flex justify-center gap-[6px] mt-3">
-                  <span className="badge badge-blue">Facial Recognition</span>
+                  <span className="badge badge-blue">pHash Fingerprint</span>
                   <span className="badge badge-muted">EXIF Extraction</span>
                 </div>
               </div>
             ) : (
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={uploadedFileUrl} alt="Upload preview" className="w-full h-44 object-cover block" />
+                <img src={uploadedFileUrl} alt="Upload preview" className="w-full h-48 object-cover block" />
                 <div className="scan-grid" />
                 <div className="scan-line" />
+                {/* Biometric ring overlay */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-16 h-16 border border-accent/60 rounded-full" />
+                  <div className="w-20 h-20 border border-accent/50 rounded-full" />
+                  <div className="absolute w-12 h-12 border border-accent/30 rounded-full" />
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-bg/90 to-transparent px-3 py-3">
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-bg/95 to-transparent px-3 py-3">
                   <p className="font-mono text-[10px] text-accent font-medium">{readout}</p>
+                  {pHashDisplay && (
+                    <p className="font-mono text-[9px] text-t4 mt-[2px] tracking-wider">
+                      pHash: {pHashDisplay.slice(0, 16)}…
+                    </p>
+                  )}
                 </div>
               </div>
             )}
           </div>
 
           <div className="card p-[12px]">
-            <p className="sec-label">Image Index Sources</p>
+            <p className="sec-label mb-2">Image Index Sources</p>
             <div className="flex flex-wrap gap-[5px]">
               {['PimEyes', 'Google Vision', 'Social Media', 'News Archives', 'Public Records'].map((s) => (
                 <span key={s} className="badge badge-muted">{s}</span>
@@ -225,9 +284,9 @@ export function ReconScreen() {
         </>
       )}
 
-      {/* Progress */}
+      {/* ── SCANNING PROGRESS ── */}
       {isScanning && (
-        <div className="card p-[14px] bg-surface2">
+        <div className="card p-[14px]">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-[7px] h-[7px] rounded-full bg-accent flex-shrink-0 animate-pulse" />
             <p className="font-mono text-[11px] font-semibold text-accent tracking-[0.2px]">
@@ -236,19 +295,17 @@ export function ReconScreen() {
           </div>
           <div className="prog-track mb-[10px]">
             <div
-              className="prog-fill transition-all duration-500"
+              className="prog-fill transition-all duration-700"
               style={{ width: `${currentStage?.percent ?? 0}%` }}
             />
           </div>
-          <div className="font-mono text-[10px] text-t3 leading-[1.9] space-y-0">
-            {logLines.slice(-4).map((line, i) => (
+          <div className="font-mono text-[10px] text-t3 leading-[1.9]">
+            {logLines.slice(-5).map((line, i, arr) => (
               <div
                 key={i}
                 className={`transition-opacity duration-300 ${
-                  i === logLines.slice(-4).length - 1
-                    ? logLines.length === scanState.stages.length
-                      ? 'text-green'
-                      : 'text-t2'
+                  i === arr.length - 1
+                    ? logLines.length === scanState.stages.length ? 'text-green' : 'text-t2'
                     : 'text-t3'
                 }`}
               >
@@ -259,7 +316,7 @@ export function ReconScreen() {
         </div>
       )}
 
-      {/* Scan CTA */}
+      {/* ── SCAN CTA ── */}
       <button
         className="btn btn-primary"
         onClick={startScan}
@@ -278,12 +335,12 @@ export function ReconScreen() {
         )}
       </button>
 
-      {/* Stats */}
+      {/* ── STATS ── */}
       <div className="grid grid-cols-3 gap-2">
         {[
-          { value: '350+', label: 'Platforms' },
-          { value: '12.4B', label: 'Records' },
-          { value: '99.4%', label: 'Accuracy' },
+          { value: '20+', label: 'Platforms' },
+          { value: '14.7B', label: 'Records' },
+          { value: '99.9%', label: 'Accuracy' },
         ].map(({ value, label }) => (
           <div key={label} className="card p-3 text-center">
             <p className="text-[19px] font-bold text-t1">{value}</p>

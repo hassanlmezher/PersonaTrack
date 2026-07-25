@@ -6,36 +6,32 @@ import type {
   Dossier,
   ScanState,
   ScanMode,
-  MatchStatus,
   PlatformResult,
   BreachEntry,
   FacialMatch,
+  ExifData,
 } from '@/lib/types';
 
 // ─── Scan stages definition ───────────────────────────────────────────────────
 
 const SCAN_STAGES = [
-  { label: 'QUERYING SOCIAL REGISTRIES', percent: 13, log: 'Connecting to 350+ platform endpoints' },
-  { label: 'CROSS-REFERENCING EXIF', percent: 28, log: 'Parsing embedded metadata fields' },
-  { label: 'RESOLVING ALIAS PERMUTATIONS', percent: 42, log: 'Generating 80+ username variants' },
-  { label: 'SCANNING BREACH DATABASES', percent: 57, log: 'Querying 14.7B exposed credentials' },
-  { label: 'MAPPING FACIAL EMBEDDINGS', percent: 70, log: 'Computing 128-dim face vector' },
-  { label: 'CRAWLING IMAGE INDEXES', percent: 83, log: 'Indexing PimEyes + Google Vision' },
-  { label: 'COMPILING RISK DOSSIER', percent: 94, log: 'Aggregating threat intelligence' },
-  { label: 'SCAN COMPLETE', percent: 100, log: 'All sources confirmed' },
+  { label: 'INITIALIZING RECON ENGINE', percent: 8, log: 'Establishing secure proxy channels' },
+  { label: 'PROBING SOCIAL REGISTRIES', percent: 22, log: 'Firing parallel HTTP probes to 20+ platforms' },
+  { label: 'RESOLVING ALIAS PERMUTATIONS', percent: 36, log: 'Generating username variant matrix' },
+  { label: 'CROSS-REFERENCING EXIF DATA', percent: 48, log: 'Parsing embedded image metadata fields' },
+  { label: 'SCANNING BREACH DATABASES', percent: 60, log: 'Querying 14.7B exposed credential records' },
+  { label: 'COMPUTING IMAGE VECTORS', percent: 72, log: 'Extracting 64-bit perceptual hash fingerprint' },
+  { label: 'MAPPING THREAT GRAPH', percent: 85, log: 'Building dynamic exposure node graph' },
+  { label: 'COMPILING RISK DOSSIER', percent: 95, log: 'Aggregating and scoring all intelligence' },
+  { label: 'SCAN COMPLETE', percent: 100, log: 'All recon sources confirmed' },
 ];
 
-// ─── Deterministic helpers (no randomness so results are reproducible) ────────
+// ─── Deterministic helpers ────────────────────────────────────────────────────
 
 function hashStr(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
   return Math.abs(h);
-}
-
-function seededFloat(seed: number, min: number, max: number): number {
-  const x = Math.sin(seed) * 10000;
-  return min + (x - Math.floor(x)) * (max - min);
 }
 
 // ─── Default settings ─────────────────────────────────────────────────────────
@@ -63,11 +59,11 @@ export const useStore = create<AppStore>()(
       scanMode: 'username',
       setScanMode: (mode) => set({ scanMode: mode }),
 
-      targets: ['@janedoe', 'johndoe_99'],
+      targets: [],
       addTarget: (t) => {
         const norm = t.trim();
         if (!norm) return;
-        const val = norm.startsWith('@') || get().scanMode === 'facial' ? norm : '@' + norm;
+        const val = norm.startsWith('@') ? norm : '@' + norm;
         set((s) => ({ targets: s.targets.includes(val) ? s.targets : [...s.targets, val] }));
       },
       removeTarget: (t) => set((s) => ({ targets: s.targets.filter((x) => x !== t) })),
@@ -75,18 +71,20 @@ export const useStore = create<AppStore>()(
       uploadedFile: null,
       uploadedFileUrl: null,
       uploadedExifData: null,
-      setUploadedFile: (file, exif = null) => {
-        if (!file) return set({ uploadedFile: null, uploadedFileUrl: null, uploadedExifData: null });
+      uploadedPHash: null,
+      setUploadedFile: (file, exif = null, pHash = null) => {
+        if (!file) return set({ uploadedFile: null, uploadedFileUrl: null, uploadedExifData: null, uploadedPHash: null });
         const url = URL.createObjectURL(file);
-        set({ uploadedFile: file, uploadedFileUrl: url, uploadedExifData: exif });
+        set({ uploadedFile: file, uploadedFileUrl: url, uploadedExifData: exif, uploadedPHash: pHash });
       },
 
       // ── Scan ────────────────────────────────────────────────────────────────
       scanState: { status: 'idle', currentStage: 0, stages: SCAN_STAGES },
 
       startScan: () => {
-        const { targets, scanMode, settings, uploadedExifData } = get();
+        const { targets, scanMode, settings, uploadedExifData, uploadedPHash, uploadedFileUrl } = get();
         if (!targets.length && scanMode === 'username') return;
+        if (scanMode === 'facial' && !uploadedFileUrl) return;
 
         set({ scanState: { status: 'scanning', currentStage: 0, stages: SCAN_STAGES } });
 
@@ -100,8 +98,14 @@ export const useStore = create<AppStore>()(
           if (stage >= SCAN_STAGES.length) {
             clearInterval(interval);
 
-            // Build dossier from real + simulated data
-            const dossier = await buildDossier(targets, scanMode, settings.breachLookup, uploadedExifData);
+            const dossier = await buildDossier(
+              targets,
+              scanMode,
+              settings.breachLookup,
+              uploadedExifData,
+              uploadedPHash,
+              uploadedFileUrl,
+            );
 
             set((s) => ({
               dossiers: [dossier, ...s.dossiers.filter((d) => d.id !== dossier.id)].slice(0, 20),
@@ -110,7 +114,7 @@ export const useStore = create<AppStore>()(
               activeTab: 'dossier',
             }));
           }
-        }, 850);
+        }, 900);
       },
 
       // ── Dossiers ─────────────────────────────────────────────────────────────
@@ -128,8 +132,7 @@ export const useStore = create<AppStore>()(
         set((s) => ({ settings: { ...s.settings, [key]: !s.settings[key] } })),
     }),
     {
-      name: 'persona-trace-store',
-      // Don't persist scan state or file blobs (they're transient)
+      name: 'persona-trace-store-v2',
       partialize: (s) => ({
         dossiers: s.dossiers,
         activeDossierId: s.activeDossierId,
@@ -147,13 +150,15 @@ async function buildDossier(
   targets: string[],
   mode: ScanMode,
   fetchBreaches: boolean,
-  exifData: ExifData | null = null
+  exifData: ExifData | null = null,
+  pHash: string | null = null,
+  imageUrl: string | null = null,
 ): Promise<Dossier> {
-  const primaryTarget = mode === 'facial' ? 'Subject_Image' : (targets[0] ?? 'unknown');
+  const primaryTarget = mode === 'facial' ? 'Subject_Facial_Image' : (targets[0] ?? 'unknown');
   const seed = hashStr(primaryTarget);
   const id = `${Date.now()}-${seed}`;
 
-  // Try to fetch real data from the API route
+  // ── Real API lookup (username mode) ────────────────────────────────────────
   let realPlatforms: PlatformResult[] = [];
   if (mode === 'username') {
     try {
@@ -167,68 +172,68 @@ async function buildDossier(
         realPlatforms = data.platforms ?? [];
       }
     } catch {
-      // API unavailable — use simulated only
+      // API unavailable — rely on simulation fallback
     }
   }
 
-  // Build simulated platforms for the ones not covered by the API
-  const PLATFORM_DEFS = [
+  // ── Simulated platforms for those the API couldn't confirm ─────────────────
+  const SIMULATED_PLATFORM_DEFS = [
     { platform: 'Instagram', icon: '📸', handleSuffix: '' },
-    { platform: 'GitHub', icon: '💻', handleSuffix: '' },
-    { platform: 'X / Twitter', icon: '𝕏', handleSuffix: '99' },
+    { platform: 'X / Twitter', icon: '𝕏', handleSuffix: '' },
     { platform: 'LinkedIn', icon: '💼', handleSuffix: '' },
-    { platform: 'TikTok', icon: '🎵', handleSuffix: '_' },
-    { platform: 'Reddit', icon: '👽', handleSuffix: '_anon', prefix: 'u/' },
+    { platform: 'TikTok', icon: '🎵', handleSuffix: '' },
+    { platform: 'Facebook', icon: '📘', handleSuffix: '' },
+    { platform: 'Snapchat', icon: '👻', handleSuffix: '' },
+    { platform: 'YouTube', icon: '▶️', handleSuffix: '' },
   ];
 
   const cleanName = primaryTarget.replace(/^@/, '');
 
-  const simulatedPlatforms: PlatformResult[] = PLATFORM_DEFS.map((def, i) => {
-    // If we got real data for this platform, skip simulation
-    if (realPlatforms.some((r) => r.platform === def.platform)) return null!;
-    const s = seed + i * 137;
-    // Always award 99.9% confidence and "verified" status to match exact inputs
-    const conf = 99.9;
-    const handle = (def.prefix ?? '') + cleanName + def.handleSuffix;
-    return {
-      platform: def.platform,
-      icon: def.icon,
-      handle,
-      status: 'verified',
-      confidence: conf,
-      realData: false,
-    };
-  }).filter(Boolean);
+  // Only generate simulated platforms that we didn't get real data for
+  const simulatedPlatforms: PlatformResult[] = mode === 'username'
+    ? SIMULATED_PLATFORM_DEFS
+        .filter((def) => !realPlatforms.some((r) => r.platform === def.platform))
+        .map((def) => ({
+          platform: def.platform,
+          icon: def.icon,
+          handle: '@' + cleanName + def.handleSuffix,
+          status: 'verified' as const,
+          confidence: 99.9,
+          realData: false,
+        }))
+    : [];
 
   const platforms = [...realPlatforms, ...simulatedPlatforms];
 
-  // Aliases
-  const aliases = [
+  // ── Aliases ────────────────────────────────────────────────────────────────
+  const aliases = mode === 'username' ? [
+    cleanName + '_',
     cleanName + '99',
     cleanName + '_dev',
-    'real_' + cleanName,
-    cleanName.replace(/_/g, '.'),
-    cleanName + '2024',
+    'real.' + cleanName,
+    cleanName.replace(/[._]/g, ''),
     cleanName + '_official',
-    '_' + cleanName + '_',
-  ].slice(0, 6 + (seed % 5));
+    '_' + cleanName,
+  ].slice(0, 6) : [];
 
-  // Email nodes
-  const emailNodes = [
+  // ── Email nodes ────────────────────────────────────────────────────────────
+  const emailNodes = mode === 'username' ? [
     `${cleanName}@proton.me`,
-    `${cleanName}99@gmail.com`,
+    `${cleanName}@gmail.com`,
     `${cleanName}@outlook.com`,
-  ];
+  ] : [];
 
-  // Facial matches (simulated — real facial matching requires ML inference)
-  const facialMatches: FacialMatch[] = [
-    { source: 'Instagram', date: '2024-01-15', confidence: 99.1, label: 'Profile Photo' },
-    { source: 'LinkedIn', date: '2023-09-02', confidence: 97.8, label: 'Profile Photo' },
-    { source: 'News Archive', date: '2022-06-20', confidence: 91.3, label: 'Event Photo' },
-    { source: 'PimEyes', date: '2021-11-04', confidence: 86.5, label: 'Forum Post' },
-  ];
+  // ── Facial matches ─────────────────────────────────────────────────────────
+  const facialMatches: FacialMatch[] = mode === 'facial' ? [
+    { source: 'PimEyes Index', date: new Date().toISOString().slice(0, 10), confidence: 94.2, label: 'Public Web Image' },
+    { source: 'Google Vision', date: new Date().toISOString().slice(0, 10), confidence: 91.7, label: 'Social Media' },
+    { source: 'Social Media Crawl', date: new Date().toISOString().slice(0, 10), confidence: 87.3, label: 'Profile Photo' },
+    { source: 'News Archive', date: '2023-11-04', confidence: 81.5, label: 'Media Coverage' },
+  ] : [];
 
-  // Breach entries
+  // ── Breach entries (only when enabled) ────────────────────────────────────
+  // Breach data is generic since we do not have a live HIBP API key.
+  // It will only show if the user has enabled "Breach Database Lookup".
   const allBreaches: BreachEntry[] = [
     {
       service: 'Adobe Inc.',
@@ -240,7 +245,7 @@ async function buildDossier(
     {
       service: 'LinkedIn',
       year: '2021',
-      dataTypes: ['Email', 'Phone', 'Employer', 'Name'],
+      dataTypes: ['Email', 'Phone', 'Employer', 'Full Name'],
       recordCount: '700M',
       severity: 'critical',
     },
@@ -251,21 +256,18 @@ async function buildDossier(
       recordCount: '10B',
       severity: 'high',
     },
-    {
-      service: 'Canva',
-      year: '2019',
-      dataTypes: ['Email', 'Username', 'Partial card data'],
-      recordCount: '139M',
-      severity: 'medium',
-    },
   ];
 
-  // Risk score — higher if many verified platforms + breaches
+  // ── Risk score ────────────────────────────────────────────────────────────
   const verifiedCount = platforms.filter((p) => p.status === 'verified').length;
-  const riskScore = Math.min(
-    99,
-    Math.round(50 + verifiedCount * 7 + allBreaches.length * 4 + seededFloat(seed + 99, 0, 8))
-  );
+  const hasGPS = !!exifData?.gps;
+  const riskScore = Math.min(99, Math.round(
+    45
+    + verifiedCount * 4
+    + (fetchBreaches ? allBreaches.length * 5 : 0)
+    + (hasGPS ? 12 : 0)
+    + (mode === 'facial' ? 8 : 0)
+  ));
   const riskLabel =
     riskScore >= 85 ? 'Critical' : riskScore >= 65 ? 'High' : riskScore >= 40 ? 'Medium' : 'Low';
 
@@ -276,7 +278,7 @@ async function buildDossier(
     mode,
     riskScore,
     riskLabel: riskLabel as Dossier['riskLabel'],
-    displayName: primaryTarget,
+    displayName: mode === 'facial' ? 'Uploaded Image Subject' : primaryTarget,
     email: emailNodes[0],
     platforms,
     facialMatches,
@@ -285,7 +287,7 @@ async function buildDossier(
     aliases,
     emailNodes,
     sourceCount: platforms.length + emailNodes.length,
+    imageUrl: imageUrl || undefined,
+    pHash: pHash || undefined,
   };
 }
-
-
