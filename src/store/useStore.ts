@@ -74,17 +74,18 @@ export const useStore = create<AppStore>()(
 
       uploadedFile: null,
       uploadedFileUrl: null,
-      setUploadedFile: (file) => {
-        if (!file) return set({ uploadedFile: null, uploadedFileUrl: null });
+      uploadedExifData: null,
+      setUploadedFile: (file, exif = null) => {
+        if (!file) return set({ uploadedFile: null, uploadedFileUrl: null, uploadedExifData: null });
         const url = URL.createObjectURL(file);
-        set({ uploadedFile: file, uploadedFileUrl: url });
+        set({ uploadedFile: file, uploadedFileUrl: url, uploadedExifData: exif });
       },
 
       // ── Scan ────────────────────────────────────────────────────────────────
       scanState: { status: 'idle', currentStage: 0, stages: SCAN_STAGES },
 
       startScan: () => {
-        const { targets, scanMode, settings } = get();
+        const { targets, scanMode, settings, uploadedExifData } = get();
         if (!targets.length && scanMode === 'username') return;
 
         set({ scanState: { status: 'scanning', currentStage: 0, stages: SCAN_STAGES } });
@@ -93,14 +94,14 @@ export const useStore = create<AppStore>()(
         const interval = setInterval(async () => {
           stage++;
           set((s) => ({
-            scanState: { ...s.scanState, currentStage: stage },
+            scanState: { ...s.scanState, currentStage: Math.min(stage, SCAN_STAGES.length - 1) },
           }));
 
           if (stage >= SCAN_STAGES.length) {
             clearInterval(interval);
 
             // Build dossier from real + simulated data
-            const dossier = await buildDossier(targets, scanMode, settings.breachLookup);
+            const dossier = await buildDossier(targets, scanMode, settings.breachLookup, uploadedExifData);
 
             set((s) => ({
               dossiers: [dossier, ...s.dossiers.filter((d) => d.id !== dossier.id)].slice(0, 20),
@@ -145,26 +146,29 @@ export const useStore = create<AppStore>()(
 async function buildDossier(
   targets: string[],
   mode: ScanMode,
-  fetchBreaches: boolean
+  fetchBreaches: boolean,
+  exifData: ExifData | null = null
 ): Promise<Dossier> {
-  const primaryTarget = targets[0] ?? 'unknown';
-  const seed = hashStr(primaryTarget);
+  const primaryTarget = mode === 'facial' ? 'Subject_Image' : (targets[0] ?? 'unknown');
+  const seed = hashStr(primaryTarget + Date.now());
   const id = `${Date.now()}-${seed}`;
 
   // Try to fetch real data from the API route
   let realPlatforms: PlatformResult[] = [];
-  try {
-    const res = await fetch('/api/scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targets, mode }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      realPlatforms = data.platforms ?? [];
+  if (mode === 'username') {
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targets, mode }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        realPlatforms = data.platforms ?? [];
+      }
+    } catch {
+      // API unavailable — use simulated only
     }
-  } catch {
-    // API unavailable — use simulated only
   }
 
   // Build simulated platforms for the ones not covered by the API
@@ -277,6 +281,7 @@ async function buildDossier(
     email: emailNodes[0],
     platforms,
     facialMatches,
+    exif: exifData || undefined,
     breaches: fetchBreaches ? allBreaches : [],
     aliases,
     emailNodes,

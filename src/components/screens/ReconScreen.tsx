@@ -55,7 +55,8 @@ export function ReconScreen() {
     setUploadedFile(file);
     startReadoutCycle();
     // Extract real EXIF in background
-    await extractExif(file);
+    const exifData = await extractExif(file);
+    setUploadedFile(file, exifData);
   }, [setUploadedFile, startReadoutCycle]);
 
   const handleDrop = (e: React.DragEvent) => {

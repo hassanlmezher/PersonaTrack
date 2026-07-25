@@ -195,51 +195,66 @@ export function DossierScreen() {
         open={openSections.exif}
         onToggle={() => toggle('exif')}
         icon={<WarningIcon />}
-        iconBg="bg-red/10 border border-red/20"
+        iconBg={dossier.exif ? "bg-red/10 border border-red/20" : "bg-surface3"}
         title="Metadata & EXIF Risks"
-        sub="5 critical vulnerabilities detected"
-        subColor="text-red"
+        sub={dossier.exif ? "Vulnerabilities detected in uploaded file" : "No real EXIF data available"}
+        subColor={dossier.exif ? "text-red" : "text-t3"}
       >
         <div className="space-y-2">
-          {/* GPS */}
-          <div className="bg-red/[0.08] border border-red/20 rounded-xl p-3">
-            <p className="text-[10px] font-bold text-red tracking-[0.5px] mb-[5px]">GPS COORDINATES EXPOSED</p>
-            <p className="font-mono text-[12px] text-t1 mb-2">33.8888° N, 35.4955° E</p>
-            <div className="bg-[#0a1018] border border-accent/15 rounded-[10px] overflow-hidden relative h-[76px]">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#091420] to-[#0d1c2e]" />
-              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 340 76" preserveAspectRatio="none">
-                {[19, 38, 57].map((y) => <line key={y} x1="0" y1={y} x2="340" y2={y} stroke="rgba(59,126,248,0.12)" strokeWidth="0.8" />)}
-                {[68, 170, 272].map((x) => <line key={x} x1={x} y1="0" x2={x} y2="76" stroke="rgba(59,126,248,0.12)" strokeWidth="0.8" />)}
-                <path d="M20,18 Q60,28 100,22 Q140,16 180,26 Q220,36 260,30 Q300,24 340,28" stroke="rgba(59,126,248,0.2)" strokeWidth="1" fill="none" />
-              </svg>
-              <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-red rounded-full -translate-x-1/2 -translate-y-1/2 shadow-[0_0_0_5px_rgba(229,72,77,0.2)]" />
-              <p className="absolute bottom-[6px] left-2 font-mono text-[9px] text-t4">Beirut, LB · ±0.4km</p>
+          {!dossier.exif ? (
+            <div className="card-sm p-3 text-center text-[12px] text-t4">
+              Upload an image in the Recon Hub to extract real metadata.
             </div>
-          </div>
-          {/* Device */}
-          <div className="bg-amber/[0.08] border border-amber/20 rounded-xl p-3">
-            <p className="text-[10px] font-bold text-amber tracking-[0.5px] mb-2">DEVICE FINGERPRINT LEAKED</p>
-            {[
-              { k: 'Device', v: 'iPhone 14 Pro' },
-              { k: 'OS', v: 'iOS 17.2.1' },
-              { k: 'Camera', v: '48MP · f/1.78' },
-              { k: 'Timestamp', v: '2024-03-15 14:33', mono: true },
-            ].map(({ k, v, mono }) => (
-              <div key={k} className="row py-[4px]">
-                <span className="text-[11px] text-t3">{k}</span>
-                <span className={`text-[11px] text-t1 font-medium ${mono ? 'font-mono' : ''}`}>{v}</span>
+          ) : (
+            <>
+              {/* GPS */}
+              {dossier.exif.gps && (
+                <div className="bg-red/[0.08] border border-red/20 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-red tracking-[0.5px] mb-[5px]">GPS COORDINATES EXPOSED</p>
+                  <p className="font-mono text-[12px] text-t1 mb-2">{dossier.exif.gps.latitude}° N, {dossier.exif.gps.longitude}° E</p>
+                  <div className="bg-[#0a1018] border border-accent/15 rounded-[10px] overflow-hidden relative h-[76px]">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#091420] to-[#0d1c2e]" />
+                    <svg className="absolute inset-0 w-full h-full" viewBox="0 0 340 76" preserveAspectRatio="none">
+                      {[19, 38, 57].map((y) => <line key={y} x1="0" y1={y} x2="340" y2={y} stroke="rgba(59,126,248,0.12)" strokeWidth="0.8" />)}
+                      {[68, 170, 272].map((x) => <line key={x} x1={x} y1="0" x2={x} y2="76" stroke="rgba(59,126,248,0.12)" strokeWidth="0.8" />)}
+                      <path d="M20,18 Q60,28 100,22 Q140,16 180,26 Q220,36 260,30 Q300,24 340,28" stroke="rgba(59,126,248,0.2)" strokeWidth="1" fill="none" />
+                    </svg>
+                    <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-red rounded-full -translate-x-1/2 -translate-y-1/2 shadow-[0_0_0_5px_rgba(229,72,77,0.2)]" />
+                    <p className="absolute bottom-[6px] left-2 font-mono text-[9px] text-t4">{dossier.exif.gps.locationName ?? 'Location mapped'}</p>
+                  </div>
+                </div>
+              )}
+              {/* Device */}
+              {(dossier.exif.device || dossier.exif.image) && (
+                <div className="bg-amber/[0.08] border border-amber/20 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-amber tracking-[0.5px] mb-2">DEVICE FINGERPRINT LEAKED</p>
+                  {[
+                    { k: 'Make', v: dossier.exif.device?.make },
+                    { k: 'Model', v: dossier.exif.device?.model },
+                    { k: 'Software', v: dossier.exif.device?.software },
+                    { k: 'Timestamp', v: dossier.exif.image?.timestamp, mono: true },
+                  ].filter(x => x.v).map(({ k, v, mono }) => (
+                    <div key={k} className="row py-[4px]">
+                      <span className="text-[11px] text-t3">{k}</span>
+                      <span className={`text-[11px] text-t1 font-medium ${mono ? 'font-mono' : ''}`}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Other flags */}
+              <div className="card-sm p-3">
+                <p className="text-[10px] font-bold text-t3 tracking-[0.5px] mb-[7px]">ADDITIONAL FLAGS</p>
+                <div className="text-[11px] text-t2 leading-[1.9]">
+                  {dossier.exif.camera && <div>· Camera: {dossier.exif.camera.focalLength ?? 'Unknown'} f/{dossier.exif.camera.fNumber ?? '?'} {dossier.exif.camera.exposureTime ?? ''}</div>}
+                  {dossier.exif.image?.width && <div>· Resolution: {dossier.exif.image.width}x{dossier.exif.image.height}</div>}
+                  {dossier.exif.author?.artist && <div>· Artist: {dossier.exif.author.artist}</div>}
+                  {!dossier.exif.camera && !dossier.exif.image?.width && !dossier.exif.author?.artist && (
+                    <div className="text-t4">No additional metadata found.</div>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
-          {/* Other flags */}
-          <div className="card-sm p-3">
-            <p className="text-[10px] font-bold text-t3 tracking-[0.5px] mb-[7px]">ADDITIONAL FLAGS</p>
-            <div className="text-[11px] text-t2 leading-[1.9]">
-              {['Software: Adobe Photoshop 25.3', 'Author field: "Jane Doe"', 'Copyright: © JD Photography 2024', 'Embedded thumbnail with face visible'].map((f) => (
-                <div key={f}>· {f}</div>
-              ))}
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </Accordion>
 

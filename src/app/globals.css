@@ -2,45 +2,45 @@
 
 /* ─── Design tokens ────────────────────────────────────────────────────────── */
 :root {
-  --bg:             #08090C;
-  --surface-1:      #0F1015;
-  --surface-2:      #141419;
-  --surface-3:      #1C1C24;
-  --border:         rgba(255,255,255,0.07);
+  --bg:             #0A0C10;
+  --surface-1:      #101217;
+  --surface-2:      #15181E;
+  --surface-3:      #1D212A;
+  --border:         rgba(255,255,255,0.06);
   --border-strong:  rgba(255,255,255,0.12);
-  --accent:         #3B7EF8;
-  --accent-dim:     rgba(59,126,248,0.12);
-  --accent-border:  rgba(59,126,248,0.25);
-  --red:            #E5484D;
-  --red-dim:        rgba(229,72,77,0.10);
-  --red-border:     rgba(229,72,77,0.22);
-  --green:          #3DD68C;
-  --green-dim:      rgba(61,214,140,0.10);
-  --green-border:   rgba(61,214,140,0.22);
-  --amber:          #E5A50A;
-  --amber-dim:      rgba(229,165,10,0.10);
-  --amber-border:   rgba(229,165,10,0.20);
+  --accent:         #00D2FF;
+  --accent-dim:     rgba(0, 210, 255, 0.12);
+  --accent-border:  rgba(0, 210, 255, 0.25);
+  --red:            #FF3B30;
+  --red-dim:        rgba(255, 59, 48, 0.10);
+  --red-border:     rgba(255, 59, 48, 0.22);
+  --green:          #00FF66;
+  --green-dim:      rgba(0, 255, 102, 0.10);
+  --green-border:   rgba(0, 255, 102, 0.22);
+  --amber:          #FF9F0A;
+  --amber-dim:      rgba(255, 159, 10, 0.10);
+  --amber-border:   rgba(255, 159, 10, 0.20);
   --t1: #FFFFFF;
-  --t2: rgba(255,255,255,0.65);
-  --t3: rgba(255,255,255,0.38);
-  --t4: rgba(255,255,255,0.20);
+  --t2: rgba(255,255,255,0.70);
+  --t3: rgba(255,255,255,0.45);
+  --t4: rgba(255,255,255,0.25);
 }
 
 /* ─── Tailwind v4 custom utilities ─────────────────────────────────────────── */
 @theme {
-  --color-bg:            #08090C;
-  --color-surface1:      #0F1015;
-  --color-surface2:      #141419;
-  --color-surface3:      #1C1C24;
-  --color-accent:        #3B7EF8;
-  --color-red:           #E5484D;
-  --color-green:         #3DD68C;
-  --color-amber:         #E5A50A;
+  --color-bg:            #0A0C10;
+  --color-surface1:      #101217;
+  --color-surface2:      #15181E;
+  --color-surface3:      #1D212A;
+  --color-accent:        #00D2FF;
+  --color-red:           #FF3B30;
+  --color-green:         #00FF66;
+  --color-amber:         #FF9F0A;
   --color-t1:            #FFFFFF;
-  --color-t2:            rgba(255,255,255,0.65);
-  --color-t3:            rgba(255,255,255,0.38);
-  --color-t4:            rgba(255,255,255,0.20);
-  --color-border:        rgba(255,255,255,0.07);
+  --color-t2:            rgba(255,255,255,0.70);
+  --color-t3:            rgba(255,255,255,0.45);
+  --color-t4:            rgba(255,255,255,0.25);
+  --color-border:        rgba(255,255,255,0.06);
   --color-border-strong: rgba(255,255,255,0.12);
 }
 
@@ -64,7 +64,9 @@ html, body {
 .app-container {
   width: 100vw;
   height: 100dvh;
-  background: var(--bg);
+  background: radial-gradient(circle at top right, rgba(0, 210, 255, 0.035) 0%, transparent 45%),
+              radial-gradient(circle at bottom left, rgba(0, 255, 102, 0.025) 0%, transparent 45%),
+              var(--bg);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -131,12 +133,17 @@ html, body {
 
 /* Card */
 .card {
-  background: var(--surface-1);
+  background: rgba(16, 18, 23, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);
   border-radius: 16px;
+  box-shadow: 0 4px 24px -8px rgba(0,0,0,0.5);
 }
 .card-sm {
-  background: var(--surface-1);
+  background: rgba(16, 18, 23, 0.4);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: 12px;
 }

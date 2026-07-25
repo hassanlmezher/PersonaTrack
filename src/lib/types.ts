@@ -143,7 +143,8 @@ export interface AppStore {
   removeTarget: (t: string) => void;
   uploadedFile: File | null;
   uploadedFileUrl: string | null;
-  setUploadedFile: (file: File | null) => void;
+  uploadedExifData: ExifData | null;
+  setUploadedFile: (file: File | null, exif?: ExifData | null) => void;
 
   // Scan
   scanState: ScanState;
