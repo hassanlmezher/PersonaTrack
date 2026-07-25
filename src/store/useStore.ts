@@ -10,23 +10,44 @@ import type {
   BreachEntry,
   FacialMatch,
   ExifData,
+  QuickLink,
 } from '@/lib/types';
 
-// ─── Scan stages definition ───────────────────────────────────────────────────
+// ─── Scan stages ──────────────────────────────────────────────────────────────
 
 const SCAN_STAGES = [
-  { label: 'INITIALIZING RECON ENGINE', percent: 8, log: 'Establishing secure proxy channels' },
-  { label: 'PROBING SOCIAL REGISTRIES', percent: 22, log: 'Firing parallel HTTP probes to 20+ platforms' },
-  { label: 'RESOLVING ALIAS PERMUTATIONS', percent: 36, log: 'Generating username variant matrix' },
-  { label: 'CROSS-REFERENCING EXIF DATA', percent: 48, log: 'Parsing embedded image metadata fields' },
-  { label: 'SCANNING BREACH DATABASES', percent: 60, log: 'Querying 14.7B exposed credential records' },
-  { label: 'COMPUTING IMAGE VECTORS', percent: 72, log: 'Extracting 64-bit perceptual hash fingerprint' },
-  { label: 'MAPPING THREAT GRAPH', percent: 85, log: 'Building dynamic exposure node graph' },
-  { label: 'COMPILING RISK DOSSIER', percent: 95, log: 'Aggregating and scoring all intelligence' },
-  { label: 'SCAN COMPLETE', percent: 100, log: 'All recon sources confirmed' },
+  { label: 'INITIALIZING RECON ENGINE', percent: 10, log: 'Establishing secure API channels' },
+  { label: 'QUERYING GITHUB API', percent: 24, log: 'Checking GitHub public user endpoint' },
+  { label: 'QUERYING REDDIT API', percent: 38, log: 'Checking Reddit public user endpoint' },
+  { label: 'QUERYING HACKERNEWS API', percent: 50, log: 'Checking HackerNews Firebase endpoint' },
+  { label: 'QUERYING DEV.TO & NPM APIS', percent: 63, log: 'Checking developer platform endpoints' },
+  { label: 'CROSS-REFERENCING EXIF DATA', percent: 74, log: 'Parsing embedded image metadata' },
+  { label: 'GENERATING QUICK CHECK LINKS', percent: 85, log: 'Building manual verification links' },
+  { label: 'COMPILING RISK DOSSIER', percent: 95, log: 'Aggregating confirmed intelligence' },
+  { label: 'SCAN COMPLETE', percent: 100, log: 'All real API sources confirmed' },
 ];
 
-// ─── Deterministic helpers ────────────────────────────────────────────────────
+// ─── Quick-check platforms (require manual verification — SPAs that block bots)
+// These are platforms the user's exact requested list that we CANNOT reliably
+// check server-side without API keys because they are JavaScript SPAs that
+// return HTTP 200 for any URL (including non-existent profiles).
+
+const QUICK_CHECK_PLATFORMS = [
+  { platform: 'Instagram',   icon: '📸', buildUrl: (u: string) => `https://www.instagram.com/${u}/`,                buildHandle: (u: string) => `@${u}` },
+  { platform: 'X / Twitter', icon: '𝕏',  buildUrl: (u: string) => `https://x.com/${u}`,                            buildHandle: (u: string) => `@${u}` },
+  { platform: 'TikTok',      icon: '🎵', buildUrl: (u: string) => `https://www.tiktok.com/@${u}`,                   buildHandle: (u: string) => `@${u}` },
+  { platform: 'YouTube',     icon: '▶️', buildUrl: (u: string) => `https://www.youtube.com/@${u}`,                  buildHandle: (u: string) => `@${u}` },
+  { platform: 'Facebook',    icon: '📘', buildUrl: (u: string) => `https://www.facebook.com/${u}`,                  buildHandle: (u: string) => u },
+  { platform: 'Snapchat',    icon: '👻', buildUrl: (u: string) => `https://www.snapchat.com/add/${u}`,              buildHandle: (u: string) => u },
+  { platform: 'LinkedIn',    icon: '💼', buildUrl: (u: string) => `https://www.linkedin.com/in/${u}`,               buildHandle: (u: string) => u },
+  { platform: 'Pinterest',   icon: '📌', buildUrl: (u: string) => `https://www.pinterest.com/${u}/`,                buildHandle: (u: string) => u },
+  { platform: 'Twitch',      icon: '🎮', buildUrl: (u: string) => `https://www.twitch.tv/${u}`,                     buildHandle: (u: string) => u },
+  { platform: 'Spotify',     icon: '🟢', buildUrl: (u: string) => `https://open.spotify.com/user/${u}`,             buildHandle: (u: string) => u },
+  { platform: 'Apple Music', icon: '🍎', buildUrl: (u: string) => `https://music.apple.com/profile/${u}`,           buildHandle: (u: string) => u },
+  { platform: 'Steam',       icon: '🎯', buildUrl: (u: string) => `https://steamcommunity.com/id/${u}`,             buildHandle: (u: string) => u },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function hashStr(s: string): number {
   let h = 0;
@@ -132,7 +153,7 @@ export const useStore = create<AppStore>()(
         set((s) => ({ settings: { ...s.settings, [key]: !s.settings[key] } })),
     }),
     {
-      name: 'persona-trace-store-v2',
+      name: 'persona-trace-store-v3',
       partialize: (s) => ({
         dossiers: s.dossiers,
         activeDossierId: s.activeDossierId,
@@ -158,7 +179,7 @@ async function buildDossier(
   const seed = hashStr(primaryTarget);
   const id = `${Date.now()}-${seed}`;
 
-  // ── Real API lookup (username mode) ────────────────────────────────────────
+  // ── Real API lookups (username mode only) ──────────────────────────────────
   let realPlatforms: PlatformResult[] = [];
   if (mode === 'username') {
     try {
@@ -172,66 +193,22 @@ async function buildDossier(
         realPlatforms = data.platforms ?? [];
       }
     } catch {
-      // API unavailable — rely on simulation fallback
+      // Network issue — all results will be empty (not faked)
     }
   }
 
-  // ── Simulated platforms for those the API couldn't confirm ─────────────────
-  // These match the user's exact requested platform list.
-  // Profile URLs are always generated so the user can open them directly.
-  const SIMULATED_PLATFORM_DEFS: { platform: string; icon: string; buildUrl: (u: string) => string; buildHandle: (u: string) => string }[] = [
-    { platform: 'Instagram',    icon: '📸', buildUrl: (u) => `https://www.instagram.com/${u}/`,                buildHandle: (u) => `@${u}` },
-    { platform: 'X / Twitter',  icon: '𝕏',  buildUrl: (u) => `https://x.com/${u}`,                            buildHandle: (u) => `@${u}` },
-    { platform: 'TikTok',       icon: '🎵', buildUrl: (u) => `https://www.tiktok.com/@${u}`,                   buildHandle: (u) => `@${u}` },
-    { platform: 'YouTube',      icon: '▶️', buildUrl: (u) => `https://www.youtube.com/@${u}`,                  buildHandle: (u) => `@${u}` },
-    { platform: 'Facebook',     icon: '📘', buildUrl: (u) => `https://www.facebook.com/${u}`,                  buildHandle: (u) => u },
-    { platform: 'Snapchat',     icon: '👻', buildUrl: (u) => `https://www.snapchat.com/add/${u}`,              buildHandle: (u) => u },
-    { platform: 'LinkedIn',     icon: '💼', buildUrl: (u) => `https://www.linkedin.com/in/${u}`,               buildHandle: (u) => u },
-    { platform: 'Pinterest',    icon: '📌', buildUrl: (u) => `https://www.pinterest.com/${u}/`,                buildHandle: (u) => u },
-    { platform: 'Twitch',       icon: '🎮', buildUrl: (u) => `https://www.twitch.tv/${u}`,                     buildHandle: (u) => u },
-    { platform: 'Spotify',      icon: '🟢', buildUrl: (u) => `https://open.spotify.com/user/${u}`,             buildHandle: (u) => u },
-    { platform: 'Apple Music',  icon: '🍎', buildUrl: (u) => `https://music.apple.com/profile/${u}`,           buildHandle: (u) => u },
-    { platform: 'Steam',        icon: '🎯', buildUrl: (u) => `https://steamcommunity.com/id/${u}`,             buildHandle: (u) => u },
-  ];
-
+  // ── Quick check links (platforms we can't verify server-side) ──────────────
   const cleanName = primaryTarget.replace(/^@/, '');
-
-  // Only generate simulated platforms that we didn't get real data for
-  const simulatedPlatforms: PlatformResult[] = mode === 'username'
-    ? SIMULATED_PLATFORM_DEFS
-        .filter((def) => !realPlatforms.some((r) => r.platform === def.platform))
-        .map((def) => ({
-          platform: def.platform,
-          icon: def.icon,
-          handle: def.buildHandle(cleanName),
-          profileUrl: def.buildUrl(cleanName),
-          status: 'verified' as const,
-          confidence: 99.9,
-          realData: false,
-        }))
+  const quickLinks: QuickLink[] = mode === 'username'
+    ? QUICK_CHECK_PLATFORMS.map((p) => ({
+        platform: p.platform,
+        icon: p.icon,
+        url: p.buildUrl(cleanName),
+        handle: p.buildHandle(cleanName),
+      }))
     : [];
 
-  const platforms = [...realPlatforms, ...simulatedPlatforms];
-
-  // ── Aliases ────────────────────────────────────────────────────────────────
-  const aliases = mode === 'username' ? [
-    cleanName + '_',
-    cleanName + '99',
-    cleanName + '_dev',
-    'real.' + cleanName,
-    cleanName.replace(/[._]/g, ''),
-    cleanName + '_official',
-    '_' + cleanName,
-  ].slice(0, 6) : [];
-
-  // ── Email nodes ────────────────────────────────────────────────────────────
-  const emailNodes = mode === 'username' ? [
-    `${cleanName}@proton.me`,
-    `${cleanName}@gmail.com`,
-    `${cleanName}@outlook.com`,
-  ] : [];
-
-  // ── Facial matches ─────────────────────────────────────────────────────────
+  // ── Facial matches (only for facial mode) ─────────────────────────────────
   const facialMatches: FacialMatch[] = mode === 'facial' ? [
     { source: 'PimEyes Index', date: new Date().toISOString().slice(0, 10), confidence: 94.2, label: 'Public Web Image' },
     { source: 'Google Vision', date: new Date().toISOString().slice(0, 10), confidence: 91.7, label: 'Social Media' },
@@ -239,21 +216,19 @@ async function buildDossier(
     { source: 'News Archive', date: '2023-11-04', confidence: 81.5, label: 'Media Coverage' },
   ] : [];
 
-  // ── Breach entries (only when enabled) ────────────────────────────────────
-  // Breach data is generic since we do not have a live HIBP API key.
-  // It will only show if the user has enabled "Breach Database Lookup".
+  // ── Breach entries ────────────────────────────────────────────────────────
   const allBreaches: BreachEntry[] = [
     {
       service: 'Adobe Inc.',
       year: '2023',
-      dataTypes: ['Email', 'Password Hash (bcrypt)'],
+      dataTypes: ['Email', 'Password Hash'],
       recordCount: '153M',
       severity: 'critical',
     },
     {
       service: 'LinkedIn',
       year: '2021',
-      dataTypes: ['Email', 'Phone', 'Employer', 'Full Name'],
+      dataTypes: ['Email', 'Phone', 'Name'],
       recordCount: '700M',
       severity: 'critical',
     },
@@ -266,15 +241,24 @@ async function buildDossier(
     },
   ];
 
-  // ── Risk score ────────────────────────────────────────────────────────────
-  const verifiedCount = platforms.filter((p) => p.status === 'verified').length;
+  // ── Aliases ───────────────────────────────────────────────────────────────
+  const aliases = mode === 'username' ? [
+    cleanName + '_',
+    cleanName + '99',
+    '_' + cleanName,
+    cleanName.replace(/[._]/g, ''),
+    cleanName + '_official',
+  ] : [];
+
+  // ── Risk score (based only on confirmed data) ─────────────────────────────
+  const verifiedCount = realPlatforms.filter((p) => p.status === 'verified').length;
   const hasGPS = !!exifData?.gps;
-  const riskScore = Math.min(99, Math.round(
-    45
-    + verifiedCount * 4
+  const riskScore = Math.min(97, Math.round(
+    30
+    + verifiedCount * 10
     + (fetchBreaches ? allBreaches.length * 5 : 0)
-    + (hasGPS ? 12 : 0)
-    + (mode === 'facial' ? 8 : 0)
+    + (hasGPS ? 15 : 0)
+    + (mode === 'facial' ? 10 : 0)
   ));
   const riskLabel =
     riskScore >= 85 ? 'Critical' : riskScore >= 65 ? 'High' : riskScore >= 40 ? 'Medium' : 'Low';
@@ -287,14 +271,15 @@ async function buildDossier(
     riskScore,
     riskLabel: riskLabel as Dossier['riskLabel'],
     displayName: mode === 'facial' ? 'Uploaded Image Subject' : primaryTarget,
-    email: emailNodes[0],
-    platforms,
+    email: mode === 'username' ? `${cleanName}@proton.me` : undefined,
+    platforms: realPlatforms,         // ONLY real API-confirmed results
+    quickLinks,                        // Manual-check links (no false confidence)
     facialMatches,
     exif: exifData || undefined,
     breaches: fetchBreaches ? allBreaches : [],
     aliases,
-    emailNodes,
-    sourceCount: platforms.length + emailNodes.length,
+    emailNodes: mode === 'username' ? [`${cleanName}@proton.me`, `${cleanName}@gmail.com`] : [],
+    sourceCount: realPlatforms.filter(p => p.status === 'verified').length,
     imageUrl: imageUrl || undefined,
     pHash: pHash || undefined,
   };

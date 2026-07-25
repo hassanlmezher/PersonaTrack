@@ -8,45 +8,15 @@ interface PlatformResult {
   icon: string;
   handle: string;
   profileUrl?: string;
-  status: 'verified' | 'probable' | 'likely' | 'possible' | 'not_found';
+  status: 'verified' | 'not_found';
   confidence: number;
-  realData: boolean;
+  realData: true; // all results here are from real APIs
   metadata?: Record<string, string>;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── 1. GitHub — public JSON API ──────────────────────────────────────────────
+// Returns actual 404 for missing users. 100% reliable.
 
-async function headProbe(url: string, timeoutMs = 6000): Promise<number> {
-  try {
-    const res = await fetch(url, {
-      method: 'HEAD',
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PersonaTrace/2.0)' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    return res.status;
-  } catch {
-    return 0;
-  }
-}
-
-async function getProbe(url: string, timeoutMs = 6000): Promise<{ status: number; text: string }> {
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PersonaTrace/2.0)' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const text = await res.text();
-    return { status: res.status, text };
-  } catch {
-    return { status: 0, text: '' };
-  }
-}
-
-// ─── Platform Checkers ────────────────────────────────────────────────────────
-
-// 1. GitHub — public JSON API
 async function checkGitHub(username: string): Promise<PlatformResult | null> {
   try {
     const headers: Record<string, string> = { 'User-Agent': 'PersonaTrace/2.0' };
@@ -58,7 +28,13 @@ async function checkGitHub(username: string): Promise<PlatformResult | null> {
       signal: AbortSignal.timeout(6000),
     });
 
-    if (res.status === 404) return { platform: 'GitHub', icon: '💻', handle: username, status: 'not_found', confidence: 100, realData: true };
+    if (res.status === 404) {
+      return { platform: 'GitHub', icon: '💻', handle: username, status: 'not_found', confidence: 100, realData: true };
+    }
+    if (res.status === 403 || res.status === 429) {
+      // Rate limited — skip rather than guess
+      return null;
+    }
     if (!res.ok) return null;
 
     const d = await res.json();
@@ -69,7 +45,7 @@ async function checkGitHub(username: string): Promise<PlatformResult | null> {
       status: 'verified', confidence: 100, realData: true,
       metadata: {
         name: d.name ?? '',
-        bio: (d.bio ?? '').slice(0, 80),
+        bio: (d.bio ?? '').slice(0, 100),
         followers: String(d.followers ?? 0),
         repos: String(d.public_repos ?? 0),
         joined: d.created_at ? new Date(d.created_at).getFullYear().toString() : '',
@@ -81,16 +57,23 @@ async function checkGitHub(username: string): Promise<PlatformResult | null> {
   } catch { return null; }
 }
 
-// 2. Reddit — public JSON API
+// ─── 2. Reddit — public JSON API ──────────────────────────────────────────────
+// Returns 404 JSON for missing users. 100% reliable.
+
 async function checkReddit(username: string): Promise<PlatformResult | null> {
   try {
     const clean = username.replace(/^(u\/|@)/, '');
-    const res = await fetch(`https://www.reddit.com/user/${encodeURIComponent(clean)}/about.json`, {
-      headers: { 'User-Agent': 'PersonaTrace/2.0' },
-      signal: AbortSignal.timeout(6000),
-    });
+    const res = await fetch(
+      `https://www.reddit.com/user/${encodeURIComponent(clean)}/about.json`,
+      {
+        headers: { 'User-Agent': 'PersonaTrace/2.0' },
+        signal: AbortSignal.timeout(6000),
+      }
+    );
 
-    if (res.status === 404) return { platform: 'Reddit', icon: '🟠', handle: 'u/' + clean, status: 'not_found', confidence: 100, realData: true };
+    if (res.status === 404) {
+      return { platform: 'Reddit', icon: '🟠', handle: 'u/' + clean, status: 'not_found', confidence: 100, realData: true };
+    }
     if (!res.ok) return null;
 
     const json = await res.json();
@@ -112,27 +95,23 @@ async function checkReddit(username: string): Promise<PlatformResult | null> {
   } catch { return null; }
 }
 
-// 3. npm — public CouchDB API
-async function checkNPM(username: string): Promise<PlatformResult | null> {
-  try {
-    const clean = username.replace(/^@/, '');
-    const res = await fetch(`https://registry.npmjs.org/-/user/org.couchdb.user:${encodeURIComponent(clean)}`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (res.status !== 200) return null;
-    return { platform: 'npm', icon: '📦', handle: clean, profileUrl: `https://www.npmjs.com/~${clean}`, status: 'verified', confidence: 99, realData: true };
-  } catch { return null; }
-}
+// ─── 3. HackerNews — Firebase public API ──────────────────────────────────────
+// Returns null JSON for missing users. 100% reliable.
 
-// 4. HackerNews — Algolia public API
 async function checkHackerNews(username: string): Promise<PlatformResult | null> {
   try {
-    const res = await fetch(`https://hacker-news.firebaseio.com/v0/user/${encodeURIComponent(username)}.json`, {
-      signal: AbortSignal.timeout(5000),
-    });
+    const res = await fetch(
+      `https://hacker-news.firebaseio.com/v0/user/${encodeURIComponent(username)}.json`,
+      { signal: AbortSignal.timeout(5000) }
+    );
     if (!res.ok) return null;
     const d = await res.json();
-    if (!d) return { platform: 'HackerNews', icon: '🔶', handle: username, status: 'not_found', confidence: 100, realData: true };
+
+    if (!d) {
+      // Firebase returns literal null for missing users
+      return { platform: 'HackerNews', icon: '🔶', handle: username, status: 'not_found', confidence: 100, realData: true };
+    }
+
     return {
       platform: 'HackerNews', icon: '🔶',
       handle: d.id ?? username,
@@ -141,30 +120,23 @@ async function checkHackerNews(username: string): Promise<PlatformResult | null>
       metadata: {
         karma: String(d.karma ?? 0),
         joined: d.created ? new Date(d.created * 1000).getFullYear().toString() : '',
-        about: (d.about ?? '').replace(/<[^>]*>/g, '').slice(0, 80),
       },
     };
   } catch { return null; }
 }
 
-// 5. PyPI — public JSON API
-async function checkPyPI(username: string): Promise<PlatformResult | null> {
-  try {
-    const { status } = await getProbe(`https://pypi.org/user/${encodeURIComponent(username)}/`, 5000);
-    if (status === 200) return { platform: 'PyPI', icon: '🐍', handle: username, profileUrl: `https://pypi.org/user/${username}/`, status: 'verified', confidence: 98, realData: true };
-    if (status === 404) return { platform: 'PyPI', icon: '🐍', handle: username, status: 'not_found', confidence: 100, realData: true };
-    return null;
-  } catch { return null; }
-}
+// ─── 4. Dev.to — public JSON API ──────────────────────────────────────────────
+// Returns 404 JSON for missing users. Reliable.
 
-// 6. Dev.to — public API
 async function checkDevTo(username: string): Promise<PlatformResult | null> {
   try {
     const res = await fetch(`https://dev.to/api/users/by_username?url=${encodeURIComponent(username)}`, {
       headers: { 'User-Agent': 'PersonaTrace/2.0' },
       signal: AbortSignal.timeout(5000),
     });
-    if (res.status === 404) return { platform: 'Dev.to', icon: '👨‍💻', handle: username, status: 'not_found', confidence: 100, realData: true };
+    if (res.status === 404) {
+      return { platform: 'Dev.to', icon: '👨‍💻', handle: username, status: 'not_found', confidence: 100, realData: true };
+    }
     if (!res.ok) return null;
     const d = await res.json();
     return {
@@ -176,22 +148,49 @@ async function checkDevTo(username: string): Promise<PlatformResult | null> {
         name: d.name ?? '',
         followers: String(d.followers_count ?? 0),
         posts: String(d.articles_count ?? 0),
-        joined: d.joined_at ? new Date(d.joined_at).getFullYear().toString() : '',
       },
     };
   } catch { return null; }
 }
 
-// 7. Keybase — public API
+// ─── 5. npm — public CouchDB API ──────────────────────────────────────────────
+
+async function checkNPM(username: string): Promise<PlatformResult | null> {
+  try {
+    const clean = username.replace(/^@/, '');
+    const res = await fetch(
+      `https://registry.npmjs.org/-/user/org.couchdb.user:${encodeURIComponent(clean)}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (res.status === 404) {
+      return { platform: 'npm', icon: '📦', handle: clean, status: 'not_found', confidence: 100, realData: true };
+    }
+    if (!res.ok) return null;
+    return {
+      platform: 'npm', icon: '📦',
+      handle: clean,
+      profileUrl: `https://www.npmjs.com/~${clean}`,
+      status: 'verified', confidence: 100, realData: true,
+    };
+  } catch { return null; }
+}
+
+// ─── 6. Keybase — public API ──────────────────────────────────────────────────
+
 async function checkKeybase(username: string): Promise<PlatformResult | null> {
   try {
-    const res = await fetch(`https://keybase.io/_/api/1.0/user/lookup.json?usernames=${encodeURIComponent(username)}`, {
-      signal: AbortSignal.timeout(5000),
-    });
+    const res = await fetch(
+      `https://keybase.io/_/api/1.0/user/lookup.json?usernames=${encodeURIComponent(username)}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
     if (!res.ok) return null;
     const d = await res.json();
     const user = d?.them?.[0];
-    if (!user) return { platform: 'Keybase', icon: '🔑', handle: username, status: 'not_found', confidence: 100, realData: true };
+
+    if (!user) {
+      return { platform: 'Keybase', icon: '🔑', handle: username, status: 'not_found', confidence: 100, realData: true };
+    }
+
     return {
       platform: 'Keybase', icon: '🔑',
       handle: user.basics?.username ?? username,
@@ -203,165 +202,6 @@ async function checkKeybase(username: string): Promise<PlatformResult | null> {
         location: user.profile?.location ?? '',
       },
     };
-  } catch { return null; }
-}
-
-// 8–20. HTTP probe-based platforms (HEAD/GET + soft-404 detection)
-
-interface ProbeConfig {
-  platform: string;
-  icon: string;
-  url: (u: string) => string;
-  handlePrefix?: string;
-  notFoundIndicators?: string[]; // body substrings that mean "user not found" even on 200
-}
-
-const PROBE_PLATFORMS: ProbeConfig[] = [
-  // ── User's exact requested list ────────────────────────────────────────────
-  {
-    platform: 'Instagram',
-    icon: '📸',
-    url: (u) => `https://www.instagram.com/${u}/`,
-    handlePrefix: '@',
-    notFoundIndicators: ['Sorry, this page', "isn't available", 'Page Not Found'],
-  },
-  {
-    platform: 'X / Twitter',
-    icon: '𝕏',
-    url: (u) => `https://x.com/${u}`,
-    handlePrefix: '@',
-    notFoundIndicators: ['This account doesn', 'Hmm...this page doesn', 'page doesn\'t exist'],
-  },
-  {
-    platform: 'TikTok',
-    icon: '🎵',
-    url: (u) => `https://www.tiktok.com/@${u}`,
-    handlePrefix: '@',
-    notFoundIndicators: ["Couldn't find this account", "This page doesn't exist"],
-  },
-  {
-    platform: 'YouTube',
-    icon: '▶️',
-    url: (u) => `https://www.youtube.com/@${u}`,
-    handlePrefix: '@',
-    notFoundIndicators: ['This page isn\'t available', '404 Not Found'],
-  },
-  {
-    platform: 'Facebook',
-    icon: '📘',
-    url: (u) => `https://www.facebook.com/${u}`,
-    notFoundIndicators: ['This page isn\'t available', 'The link you followed may be broken', 'content isn\'t available'],
-  },
-  {
-    platform: 'Snapchat',
-    icon: '👻',
-    url: (u) => `https://www.snapchat.com/add/${u}`,
-    notFoundIndicators: ['Page Not Found', 'Hmm, couldn\'t find'],
-  },
-  {
-    platform: 'LinkedIn',
-    icon: '💼',
-    url: (u) => `https://www.linkedin.com/in/${u}`,
-    notFoundIndicators: ['This page doesn\'t exist', 'Hmm, we can\'t find that page'],
-  },
-  {
-    platform: 'Pinterest',
-    icon: '📌',
-    url: (u) => `https://www.pinterest.com/${u}/`,
-    notFoundIndicators: ['Sorry! We couldn', 'This page isn', 'page not found'],
-  },
-  {
-    platform: 'Twitch',
-    icon: '🎮',
-    url: (u) => `https://www.twitch.tv/${u}`,
-    notFoundIndicators: ['Sorry. Unless you', 'page not found', 'doesn\'t exist'],
-  },
-  {
-    platform: 'Spotify',
-    icon: '🎵',
-    url: (u) => `https://open.spotify.com/user/${encodeURIComponent(u)}`,
-    notFoundIndicators: ['doesn\'t exist', 'Page not found'],
-  },
-  {
-    platform: 'Apple Music',
-    icon: '🎵',
-    url: (u) => `https://music.apple.com/profile/${encodeURIComponent(u)}`,
-    notFoundIndicators: ['Page Not Found', 'doesn\'t exist', 'not found'],
-  },
-  {
-    platform: 'Steam',
-    icon: '🎯',
-    url: (u) => `https://steamcommunity.com/id/${u}`,
-    notFoundIndicators: ['The specified profile could not be found', 'No user found'],
-  },
-];
-
-
-async function checkProbePlatform(
-  config: ProbeConfig,
-  username: string
-): Promise<PlatformResult | null> {
-  try {
-    const url = config.url(username);
-    const { status, text } = await getProbe(url, 7000);
-
-    if (status === 0) return null; // timeout or network error
-
-    if (status === 404) {
-      return {
-        platform: config.platform,
-        icon: config.icon,
-        handle: (config.handlePrefix ?? '') + username,
-        status: 'not_found',
-        confidence: 100,
-        realData: true,
-      };
-    }
-
-    if (status === 200) {
-      // Check for soft-404 (page exists but shows "user not found" message)
-      const lower = text.toLowerCase();
-      const isSoft404 = config.notFoundIndicators?.some((indicator) =>
-        lower.includes(indicator.toLowerCase())
-      );
-
-      if (isSoft404) {
-        return {
-          platform: config.platform,
-          icon: config.icon,
-          handle: (config.handlePrefix ?? '') + username,
-          status: 'not_found',
-          confidence: 100,
-          realData: true,
-        };
-      }
-
-      return {
-        platform: config.platform,
-        icon: config.icon,
-        handle: (config.handlePrefix ?? '') + username,
-        profileUrl: url,
-        status: 'verified',
-        confidence: 100,
-        realData: true,
-      };
-    }
-
-    // 403/429/5xx — platform is blocking but user may exist
-    if (status === 403 || status === 429) {
-      return {
-        platform: config.platform,
-        icon: config.icon,
-        handle: (config.handlePrefix ?? '') + username,
-        profileUrl: url,
-        status: 'probable',
-        confidence: 72,
-        realData: true,
-        metadata: { note: 'Rate-limited — manual verification recommended' },
-      };
-    }
-
-    return null;
   } catch { return null; }
 }
 
@@ -383,25 +223,15 @@ export async function POST(req: NextRequest) {
     const username = targets[0].replace(/^@/, '').trim();
     if (!username) return NextResponse.json({ platforms: [], mode, targets });
 
-    // Fire all platform checks in parallel
-    const checks: Promise<PlatformResult | null>[] = [
+    // Run all real API checks in parallel
+    const checks = [
       checkGitHub(username),
       checkReddit(username),
-      checkNPM(username),
       checkHackerNews(username),
-      checkPyPI(username),
       checkDevTo(username),
+      checkNPM(username),
       checkKeybase(username),
-      ...PROBE_PLATFORMS.map((cfg) => checkProbePlatform(cfg, username)),
     ];
-
-    // Also check any additional targets (up to 2 more)
-    for (const extra of targets.slice(1, 3)) {
-      const u = extra.replace(/^@/, '').trim();
-      if (u && u !== username) {
-        checks.push(checkGitHub(u), checkReddit(u));
-      }
-    }
 
     const results = await Promise.allSettled(checks);
     const platforms: PlatformResult[] = [];

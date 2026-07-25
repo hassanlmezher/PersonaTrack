@@ -79,6 +79,15 @@ export interface BreachEntry {
   severity: 'critical' | 'high' | 'medium';
 }
 
+// ─── Quick Check Links (platforms we can't API-verify server-side) ────────────
+
+export interface QuickLink {
+  platform: string;
+  icon: string;
+  url: string;
+  handle: string;
+}
+
 // ─── Dossier ──────────────────────────────────────────────────────────────────
 
 export interface Dossier {
@@ -90,7 +99,8 @@ export interface Dossier {
   riskLabel: 'Critical' | 'High' | 'Medium' | 'Low';
   displayName: string;
   email?: string;
-  platforms: PlatformResult[];
+  platforms: PlatformResult[];     // Only real API-confirmed results
+  quickLinks: QuickLink[];         // Platforms user must manually verify
   facialMatches: FacialMatch[];
   exif?: ExifData;
   breaches: BreachEntry[];
@@ -98,8 +108,8 @@ export interface Dossier {
   emailNodes: string[];
   sourceCount: number;
   // Image pipeline
-  imageUrl?: string;    // object URL of the uploaded image (for facial mode)
-  pHash?: string;       // perceptual hash of the uploaded image
+  imageUrl?: string;
+  pHash?: string;
 }
 
 // ─── Scan State ───────────────────────────────────────────────────────────────
