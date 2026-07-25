@@ -177,14 +177,21 @@ async function buildDossier(
   }
 
   // ── Simulated platforms for those the API couldn't confirm ─────────────────
-  const SIMULATED_PLATFORM_DEFS = [
-    { platform: 'Instagram', icon: '📸', handleSuffix: '' },
-    { platform: 'X / Twitter', icon: '𝕏', handleSuffix: '' },
-    { platform: 'LinkedIn', icon: '💼', handleSuffix: '' },
-    { platform: 'TikTok', icon: '🎵', handleSuffix: '' },
-    { platform: 'Facebook', icon: '📘', handleSuffix: '' },
-    { platform: 'Snapchat', icon: '👻', handleSuffix: '' },
-    { platform: 'YouTube', icon: '▶️', handleSuffix: '' },
+  // These match the user's exact requested platform list.
+  // Profile URLs are always generated so the user can open them directly.
+  const SIMULATED_PLATFORM_DEFS: { platform: string; icon: string; buildUrl: (u: string) => string; buildHandle: (u: string) => string }[] = [
+    { platform: 'Instagram',    icon: '📸', buildUrl: (u) => `https://www.instagram.com/${u}/`,                buildHandle: (u) => `@${u}` },
+    { platform: 'X / Twitter',  icon: '𝕏',  buildUrl: (u) => `https://x.com/${u}`,                            buildHandle: (u) => `@${u}` },
+    { platform: 'TikTok',       icon: '🎵', buildUrl: (u) => `https://www.tiktok.com/@${u}`,                   buildHandle: (u) => `@${u}` },
+    { platform: 'YouTube',      icon: '▶️', buildUrl: (u) => `https://www.youtube.com/@${u}`,                  buildHandle: (u) => `@${u}` },
+    { platform: 'Facebook',     icon: '📘', buildUrl: (u) => `https://www.facebook.com/${u}`,                  buildHandle: (u) => u },
+    { platform: 'Snapchat',     icon: '👻', buildUrl: (u) => `https://www.snapchat.com/add/${u}`,              buildHandle: (u) => u },
+    { platform: 'LinkedIn',     icon: '💼', buildUrl: (u) => `https://www.linkedin.com/in/${u}`,               buildHandle: (u) => u },
+    { platform: 'Pinterest',    icon: '📌', buildUrl: (u) => `https://www.pinterest.com/${u}/`,                buildHandle: (u) => u },
+    { platform: 'Twitch',       icon: '🎮', buildUrl: (u) => `https://www.twitch.tv/${u}`,                     buildHandle: (u) => u },
+    { platform: 'Spotify',      icon: '🟢', buildUrl: (u) => `https://open.spotify.com/user/${u}`,             buildHandle: (u) => u },
+    { platform: 'Apple Music',  icon: '🍎', buildUrl: (u) => `https://music.apple.com/profile/${u}`,           buildHandle: (u) => u },
+    { platform: 'Steam',        icon: '🎯', buildUrl: (u) => `https://steamcommunity.com/id/${u}`,             buildHandle: (u) => u },
   ];
 
   const cleanName = primaryTarget.replace(/^@/, '');
@@ -196,7 +203,8 @@ async function buildDossier(
         .map((def) => ({
           platform: def.platform,
           icon: def.icon,
-          handle: '@' + cleanName + def.handleSuffix,
+          handle: def.buildHandle(cleanName),
+          profileUrl: def.buildUrl(cleanName),
           status: 'verified' as const,
           confidence: 99.9,
           realData: false,

@@ -604,51 +604,66 @@ function PlatformCard({ platform: p }: { platform: PlatformResult }) {
     p.status === 'not_found' ? 'Not Found' : 'Possible';
 
   return (
-    <div className={`bg-surface2 border rounded-xl p-[10px] flex items-center gap-[10px] ${
+    <div className={`bg-surface2 border rounded-xl p-[10px] ${
       p.status === 'not_found' ? 'opacity-40 border-border' : 'border-border'
     }`}>
-      <div className="w-[34px] h-[34px] bg-surface3 rounded-[10px] flex items-center justify-center text-base flex-shrink-0">
-        {p.icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-[6px] mb-[1px]">
-          <div className={`w-[7px] h-[7px] rounded-full flex-shrink-0 ${dotClass}`} />
-          <span className="text-[13px] font-medium text-t1">{p.platform}</span>
-          {p.realData && p.status !== 'not_found' && (
-            <span className="text-[8px] text-green font-semibold bg-green/10 px-1.5 py-0.5 rounded-full">LIVE</span>
+      <div className="flex items-center gap-[10px]">
+        <div className="w-[34px] h-[34px] bg-surface3 rounded-[10px] flex items-center justify-center text-base flex-shrink-0">
+          {p.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-[6px] mb-[1px]">
+            <div className={`w-[7px] h-[7px] rounded-full flex-shrink-0 ${dotClass}`} />
+            <span className="text-[13px] font-medium text-t1">{p.platform}</span>
+            {p.realData && p.status !== 'not_found' && (
+              <span className="text-[8px] text-green font-semibold bg-green/10 px-1.5 py-0.5 rounded-full">LIVE</span>
+            )}
+          </div>
+          <p className="text-[10px] text-t3 font-mono">{p.handle}</p>
+          {p.metadata?.note && (
+            <p className="text-[9px] text-amber mt-[2px]">{p.metadata.note}</p>
           )}
         </div>
-        <p className="text-[10px] text-t3 mb-[6px] font-mono">{p.handle}</p>
-        {p.status !== 'not_found' && (
-          <div className="flex items-center gap-[7px]">
-            <div className="flex-1 h-[2px] bg-surface3 rounded-full overflow-hidden">
-              <div className="h-full bg-accent rounded-full" style={{ width: `${p.confidence}%` }} />
-            </div>
-            <span className="text-[10px] font-semibold text-t2">{p.confidence}%</span>
-          </div>
-        )}
-        {p.realData && p.metadata?.followers && (
-          <div className="mt-[5px] flex gap-2 flex-wrap">
-            <span className="text-[9px] text-t4">{p.metadata.followers} followers</span>
-            {p.metadata.repos && <span className="text-[9px] text-t4">{p.metadata.repos} repos</span>}
-            {p.metadata.karma && <span className="text-[9px] text-t4">{p.metadata.karma} karma</span>}
-            {p.metadata.location && <span className="text-[9px] text-t4">📍 {p.metadata.location}</span>}
-            {p.metadata.note && <span className="text-[9px] text-amber">{p.metadata.note}</span>}
-          </div>
-        )}
-        {p.profileUrl && p.status !== 'not_found' && (
-          <a
-            href={p.profileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[9px] text-accent/70 hover:text-accent mt-[3px] block truncate transition-colors"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {p.profileUrl}
-          </a>
-        )}
+        <span className={`badge ${badgeClass} flex-shrink-0 text-[9px]`}>{label}</span>
       </div>
-      <span className={`badge ${badgeClass} flex-shrink-0 text-[9px]`}>{label}</span>
+
+      {/* Confidence bar */}
+      {p.status !== 'not_found' && (
+        <div className="flex items-center gap-[7px] mt-[8px]">
+          <div className="flex-1 h-[2px] bg-surface3 rounded-full overflow-hidden">
+            <div className="h-full bg-accent rounded-full transition-all duration-500" style={{ width: `${p.confidence}%` }} />
+          </div>
+          <span className="text-[10px] font-semibold text-t2 font-mono">{p.confidence}%</span>
+        </div>
+      )}
+
+      {/* Real metadata row */}
+      {p.realData && (p.metadata?.followers || p.metadata?.karma || p.metadata?.repos) && (
+        <div className="flex gap-3 flex-wrap mt-[6px]">
+          {p.metadata.followers && <span className="text-[9px] text-t4">{p.metadata.followers} followers</span>}
+          {p.metadata.repos && <span className="text-[9px] text-t4">{p.metadata.repos} repos</span>}
+          {p.metadata.karma && <span className="text-[9px] text-t4">{p.metadata.karma} karma</span>}
+          {p.metadata.location && <span className="text-[9px] text-t4">📍 {p.metadata.location}</span>}
+        </div>
+      )}
+
+      {/* Open Profile button — always shown when profileUrl exists */}
+      {p.profileUrl && p.status !== 'not_found' && (
+        <a
+          href={p.profileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-[8px] flex items-center justify-center gap-[6px] w-full py-[7px] rounded-[9px] bg-surface3 border border-border text-[11px] font-semibold text-t2 hover:text-t1 hover:border-border-strong hover:bg-surface2 active:scale-[0.98] transition-all"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+          Open Profile
+        </a>
+      )}
     </div>
   );
 }

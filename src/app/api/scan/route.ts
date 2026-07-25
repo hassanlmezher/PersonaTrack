@@ -217,11 +217,52 @@ interface ProbeConfig {
 }
 
 const PROBE_PLATFORMS: ProbeConfig[] = [
+  // ── User's exact requested list ────────────────────────────────────────────
   {
-    platform: 'Medium',
-    icon: '✍️',
-    url: (u) => `https://medium.com/@${u}`,
-    notFoundIndicators: ['Page not found', 'Hmm, that page doesn'],
+    platform: 'Instagram',
+    icon: '📸',
+    url: (u) => `https://www.instagram.com/${u}/`,
+    handlePrefix: '@',
+    notFoundIndicators: ['Sorry, this page', "isn't available", 'Page Not Found'],
+  },
+  {
+    platform: 'X / Twitter',
+    icon: '𝕏',
+    url: (u) => `https://x.com/${u}`,
+    handlePrefix: '@',
+    notFoundIndicators: ['This account doesn', 'Hmm...this page doesn', 'page doesn\'t exist'],
+  },
+  {
+    platform: 'TikTok',
+    icon: '🎵',
+    url: (u) => `https://www.tiktok.com/@${u}`,
+    handlePrefix: '@',
+    notFoundIndicators: ["Couldn't find this account", "This page doesn't exist"],
+  },
+  {
+    platform: 'YouTube',
+    icon: '▶️',
+    url: (u) => `https://www.youtube.com/@${u}`,
+    handlePrefix: '@',
+    notFoundIndicators: ['This page isn\'t available', '404 Not Found'],
+  },
+  {
+    platform: 'Facebook',
+    icon: '📘',
+    url: (u) => `https://www.facebook.com/${u}`,
+    notFoundIndicators: ['This page isn\'t available', 'The link you followed may be broken', 'content isn\'t available'],
+  },
+  {
+    platform: 'Snapchat',
+    icon: '👻',
+    url: (u) => `https://www.snapchat.com/add/${u}`,
+    notFoundIndicators: ['Page Not Found', 'Hmm, couldn\'t find'],
+  },
+  {
+    platform: 'LinkedIn',
+    icon: '💼',
+    url: (u) => `https://www.linkedin.com/in/${u}`,
+    notFoundIndicators: ['This page doesn\'t exist', 'Hmm, we can\'t find that page'],
   },
   {
     platform: 'Pinterest',
@@ -230,58 +271,22 @@ const PROBE_PLATFORMS: ProbeConfig[] = [
     notFoundIndicators: ['Sorry! We couldn', 'This page isn', 'page not found'],
   },
   {
-    platform: 'SoundCloud',
-    icon: '🎵',
-    url: (u) => `https://soundcloud.com/${u}`,
-    notFoundIndicators: ['We can\'t find that user', '404'],
-  },
-  {
     platform: 'Twitch',
     icon: '🎮',
     url: (u) => `https://www.twitch.tv/${u}`,
-    notFoundIndicators: ['Sorry. Unless you', 'page not found'],
+    notFoundIndicators: ['Sorry. Unless you', 'page not found', 'doesn\'t exist'],
   },
   {
     platform: 'Spotify',
-    icon: '🎧',
-    url: (u) => `https://open.spotify.com/user/${u}`,
+    icon: '🎵',
+    url: (u) => `https://open.spotify.com/user/${encodeURIComponent(u)}`,
     notFoundIndicators: ['doesn\'t exist', 'Page not found'],
   },
   {
-    platform: 'Vimeo',
-    icon: '🎬',
-    url: (u) => `https://vimeo.com/${u}`,
-    notFoundIndicators: ['Sorry, we couldn\'t find that page'],
-  },
-  {
-    platform: 'Behance',
-    icon: '🎨',
-    url: (u) => `https://www.behance.net/${u}`,
-    notFoundIndicators: ['This page doesn\'t exist', '404'],
-  },
-  {
-    platform: 'Flickr',
-    icon: '📷',
-    url: (u) => `https://www.flickr.com/people/${u}/`,
-    notFoundIndicators: ['Page Not Found', 'not a valid'],
-  },
-  {
-    platform: 'Linktree',
-    icon: '🌳',
-    url: (u) => `https://linktr.ee/${u}`,
-    notFoundIndicators: ['Sorry, this page isn\'t available', 'page not found'],
-  },
-  {
-    platform: 'ProductHunt',
-    icon: '🚀',
-    url: (u) => `https://www.producthunt.com/@${u}`,
-    notFoundIndicators: ['Oops! This page doesn\'t exist', '404'],
-  },
-  {
-    platform: 'About.me',
-    icon: '👤',
-    url: (u) => `https://about.me/${u}`,
-    notFoundIndicators: ['Page Not Found', 'doesn\'t exist'],
+    platform: 'Apple Music',
+    icon: '🎵',
+    url: (u) => `https://music.apple.com/profile/${encodeURIComponent(u)}`,
+    notFoundIndicators: ['Page Not Found', 'doesn\'t exist', 'not found'],
   },
   {
     platform: 'Steam',
@@ -289,13 +294,8 @@ const PROBE_PLATFORMS: ProbeConfig[] = [
     url: (u) => `https://steamcommunity.com/id/${u}`,
     notFoundIndicators: ['The specified profile could not be found', 'No user found'],
   },
-  {
-    platform: 'Mastodon',
-    icon: '🐘',
-    url: (u) => `https://mastodon.social/@${u}`,
-    notFoundIndicators: ['The page you\'re looking for isn\'t here', 'not found'],
-  },
 ];
+
 
 async function checkProbePlatform(
   config: ProbeConfig,
