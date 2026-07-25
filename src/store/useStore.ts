@@ -218,7 +218,7 @@ async function buildDossier(
   
   if (mode === 'name') {
     try {
-      const res = await fetch('/api/scan', {
+      const res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targets: searchTargets, mode: 'username' }), // Backend still uses username internally
