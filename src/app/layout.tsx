@@ -15,7 +15,13 @@ export const metadata: Metadata = {
   keywords: ['OSINT', 'security research', 'digital footprint', 'threat intelligence'],
   authors: [{ name: 'PersonaTrace' }],
   robots: 'noindex,nofollow',
-  icons: { icon: '/favicon.ico' },
+  icons: { icon: '/favicon.ico', apple: '/apple-icon.png' },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    title: 'PersonaTrace',
+    statusBarStyle: 'black-translucent',
+  },
 };
 
 export const viewport: Viewport = {
